@@ -6995,7 +6995,6 @@ async function handleStepData(step, payload) {
           excludeLocalhostCallbacks: true,
         });
       }
-      await finalizePhoneActivationAfterSuccessfulFlow(latestState);
       await finalizeIcloudAliasAfterSuccessfulFlow(latestState);
       const shouldClearCustomPoolEmail = String(latestState?.emailGenerator || '').trim().toLowerCase() === (
         typeof CUSTOM_EMAIL_POOL_GENERATOR === 'string'
@@ -7005,6 +7004,7 @@ async function handleStepData(step, payload) {
       if ((shouldUseCustomRegistrationEmail(latestState) || shouldClearCustomPoolEmail) && latestState.email) {
         await setEmailStateSilently(null);
       }
+      await finalizePhoneActivationAfterSuccessfulFlow(latestState);
       break;
     }
   }

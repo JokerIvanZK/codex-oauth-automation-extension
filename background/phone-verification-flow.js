@@ -248,18 +248,19 @@
       }
     }
 
-    function resolvePhoneConfig(state = {}) {
+    function resolvePhoneConfig(state = {}, options = {}) {
       const apiKey = normalizeApiKey(state.heroSmsApiKey);
       if (!apiKey) {
         throw new Error('HeroSMS API key is missing. Save it in the side panel before running the phone flow.');
       }
+      const requireMaxPrice = Boolean(options.requireMaxPrice);
       const maxPrice = normalizeManualHeroSmsMaxPrice(state.heroSmsMaxPrice);
-      if (!maxPrice) {
+      if (requireMaxPrice && !maxPrice) {
         throw new Error('HeroSMS maxPrice is missing. Fill it in below the country selector before running the phone flow.');
       }
       return {
         apiKey,
-        maxPrice,
+        ...(maxPrice ? { maxPrice } : {}),
         baseUrl: normalizeUrl(state.heroSmsBaseUrl, DEFAULT_HERO_SMS_BASE_URL),
       };
     }
@@ -324,7 +325,7 @@
     }
 
     async function requestPhoneActivation(state = {}) {
-      const config = resolvePhoneConfig(state);
+      const config = resolvePhoneConfig(state, { requireMaxPrice: true });
       const countryConfig = resolveCountryConfig(state);
       const maxPrice = config.maxPrice;
       const buildFallbackActivation = (requestAction) => ({

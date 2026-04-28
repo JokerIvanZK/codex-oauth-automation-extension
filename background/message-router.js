@@ -203,10 +203,10 @@
           excludeLocalhostCallbacks: true,
         });
       }
+      await finalizeIcloudAliasAfterSuccessfulFlow(latestState);
       if (typeof finalizePhoneActivationAfterSuccessfulFlow === 'function') {
         await finalizePhoneActivationAfterSuccessfulFlow(latestState);
       }
-      await finalizeIcloudAliasAfterSuccessfulFlow(latestState);
     }
 
     async function handleStepData(step, payload) {

@@ -95,6 +95,53 @@ test('phone verification helper requires manual HeroSMS maxPrice', async () => {
   );
 });
 
+test('phone verification helper still clears existing activation when maxPrice is missing', async () => {
+  const requests = [];
+  let currentState = {
+    heroSmsApiKey: 'demo-key',
+    heroSmsMaxPrice: '',
+    currentPhoneActivation: {
+      activationId: '123456',
+      phoneNumber: '66959916439',
+      successfulUses: 0,
+      maxUses: 3,
+    },
+    reusablePhoneActivation: null,
+    pendingPhoneActivationConfirmation: null,
+  };
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      requests.push(parsedUrl);
+      return {
+        ok: true,
+        text: async () => 'ACCESS_CANCEL',
+      };
+    },
+    getState: async () => currentState,
+    sendToContentScriptResilient: async () => ({}),
+    setState: async (updates) => {
+      currentState = { ...currentState, ...updates };
+    },
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  await assert.rejects(
+    () => helpers.completePhoneVerificationFlow(1, { addPhonePage: true }),
+    /HeroSMS maxPrice is missing/i
+  );
+
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].searchParams.get('action'), 'setStatus');
+  assert.equal(requests[0].searchParams.get('id'), '123456');
+  assert.equal(requests[0].searchParams.get('status'), '8');
+  assert.equal(requests[0].searchParams.has('maxPrice'), false);
+  assert.equal(currentState.currentPhoneActivation, null);
+});
+
 test('phone verification helper retries with HeroSMS getNumberV2 when getNumber reports NO_NUMBERS', async () => {
   const requests = [];
   const helpers = api.createPhoneVerificationHelpers({
