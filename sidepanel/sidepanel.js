@@ -2650,7 +2650,7 @@ function applyAutoRunStatus(payload = currentAutoRun) {
   inputEmail.disabled = locked;
   inputAutoSkipFailures.disabled = scheduled;
 
-  if (currentAutoRun.totalRuns > 0) {
+  if (currentAutoRun.totalRuns > 0 && currentAutoRun.phase !== 'idle') {
     inputRunCount.value = String(currentAutoRun.totalRuns);
   }
 
@@ -3017,7 +3017,14 @@ function applySettingsState(state) {
     }
     updateHeroSmsPlatformDisplay(state?.heroSmsCountryLabel || getSelectedHeroSmsCountryOption().label);
   }
-  if (state?.autoRunTotalRuns) {
+  if (
+    state?.autoRunTotalRuns
+    && (
+      state?.autoRunning
+      || ['scheduled', 'running', 'waiting_step', 'waiting_email', 'retrying', 'waiting_interval']
+        .includes(String(state?.autoRunPhase || '').trim())
+    )
+  ) {
     inputRunCount.value = String(state.autoRunTotalRuns);
   }
 

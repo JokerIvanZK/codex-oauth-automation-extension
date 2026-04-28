@@ -483,7 +483,7 @@
           return digitMatch?.[1] || rawCode;
         }
 
-        if (/^STATUS_(WAIT_CODE|WAIT_RETRY|WAIT_RESEND)$/i.test(text)) {
+        if (/^STATUS_(WAIT_CODE|WAIT_RETRY|WAIT_RESEND)(?::.*)?$/i.test(text)) {
           await sleepWithStop(intervalMs);
           continue;
         }
@@ -663,6 +663,13 @@
           );
           return reactivated;
         } catch (error) {
+          if (isHeroSmsWrongStatusReactivateError(error)) {
+            await addLog(
+              `Step 9: HeroSMS reactivate rejected stored number ${reusableActivation.phoneNumber} with BAD_STATUS, reusing the existing activation directly.`,
+              'warn'
+            );
+            return reusableActivation;
+          }
           await addLog(`Step 9: failed to reuse phone number ${reusableActivation.phoneNumber}, falling back to a new number. ${error.message}`, 'warn');
           await clearReusableActivation();
         }
@@ -703,6 +710,10 @@
       await persistPendingPhoneActivationConfirmation(null);
     }
 
+    function isHeroSmsWrongStatusReactivateError(error) {
+      return /BAD_STATUS:\s*Wrong status code/i.test(String(error?.message || ''));
+    }
+
     async function finalizePendingPhoneActivationConfirmation(stateOverride = null) {
       const state = stateOverride || await getState();
       const pendingActivation = normalizeActivation(state[PENDING_PHONE_ACTIVATION_CONFIRMATION_STATE_KEY]);
@@ -719,6 +730,12 @@
 
       await syncReusableActivationAfterUse(committedActivation);
       await clearPendingPhoneActivationConfirmation();
+      await addLog(
+        committedActivation.successfulUses >= committedActivation.maxUses
+          ? `Step 10: phone number ${committedActivation.phoneNumber} reached max reuse count (${committedActivation.successfulUses}/${committedActivation.maxUses}); the next flow will request a new number.`
+          : `Step 10: confirmed reusable phone number ${committedActivation.phoneNumber} (${committedActivation.successfulUses}/${committedActivation.maxUses}) for the next flow.`,
+        committedActivation.successfulUses >= committedActivation.maxUses ? 'info' : 'ok'
+      );
       return committedActivation;
     }
 
@@ -906,6 +923,10 @@
               await completePhoneActivation(state, activation);
               await persistReusableActivation(activation);
               await persistPendingPhoneActivationConfirmation(activation);
+              await addLog(
+                `Step 9: stored phone number ${activation.phoneNumber} for reuse; it will be confirmed after the full flow succeeds.`,
+                'info'
+              );
             } catch (activationStatusError) {
               await clearReusableActivation();
               await clearPendingPhoneActivationConfirmation();

@@ -91,3 +91,129 @@ return { normalizeRunCount };
   assert.equal(api.normalizeRunCount(0), 1);
   assert.equal(api.normalizeRunCount('bad'), 1);
 });
+
+test('applyAutoRunStatus does not overwrite manual run count with idle runtime default', () => {
+  const source = fs.readFileSync('sidepanel/sidepanel.js', 'utf8');
+  const bundle = [
+    extractFunction(source, 'hasOwnStateValue'),
+    extractFunction(source, 'readAutoRunStateValue'),
+    extractFunction(source, 'syncAutoRunState'),
+    extractFunction(source, 'isAutoRunLockedPhase'),
+    extractFunction(source, 'isAutoRunPausedPhase'),
+    extractFunction(source, 'isAutoRunScheduledPhase'),
+    extractFunction(source, 'getAutoRunLabel'),
+    extractFunction(source, 'applyAutoRunStatus'),
+  ].join('\n');
+
+  const api = new Function(`
+let currentAutoRun = {
+  autoRunning: false,
+  phase: 'idle',
+  currentRun: 0,
+  totalRuns: 1,
+  attemptRun: 0,
+  scheduledAt: null,
+  countdownAt: null,
+  countdownTitle: '',
+  countdownNote: '',
+};
+const inputRunCount = { value: '99', disabled: false };
+const btnAutoRun = { disabled: false, innerHTML: '' };
+const btnFetchEmail = { disabled: false };
+const inputEmail = { disabled: false };
+const inputAutoSkipFailures = { disabled: false };
+const autoContinueBar = { style: { display: '' } };
+function setSettingsCardLocked() {}
+function shouldLockRunCountToEmailPool() { return false; }
+function isCustomMailProvider() { return false; }
+function usesCustomEmailPoolGenerator() { return false; }
+function setDefaultAutoRunButton() {}
+function updateAutoDelayInputState() {}
+function updateFallbackThreadIntervalInputState() {}
+function syncScheduledCountdownTicker() {}
+function updateStopButtonState() {}
+function getStepStatuses() { return {}; }
+function updateConfigMenuControls() {}
+function renderContributionMode() {}
+${bundle}
+return {
+  applyAutoRunStatus,
+  getRunCount() {
+    return inputRunCount.value;
+  },
+};
+`)();
+
+  api.applyAutoRunStatus({
+    autoRunning: false,
+    autoRunPhase: 'idle',
+    autoRunTotalRuns: 1,
+    autoRunCurrentRun: 0,
+    autoRunAttemptRun: 0,
+  });
+
+  assert.equal(api.getRunCount(), '99');
+});
+
+test('applyAutoRunStatus reflects runtime total runs while auto run is active', () => {
+  const source = fs.readFileSync('sidepanel/sidepanel.js', 'utf8');
+  const bundle = [
+    extractFunction(source, 'hasOwnStateValue'),
+    extractFunction(source, 'readAutoRunStateValue'),
+    extractFunction(source, 'syncAutoRunState'),
+    extractFunction(source, 'isAutoRunLockedPhase'),
+    extractFunction(source, 'isAutoRunPausedPhase'),
+    extractFunction(source, 'isAutoRunScheduledPhase'),
+    extractFunction(source, 'getAutoRunLabel'),
+    extractFunction(source, 'applyAutoRunStatus'),
+  ].join('\n');
+
+  const api = new Function(`
+let currentAutoRun = {
+  autoRunning: false,
+  phase: 'idle',
+  currentRun: 0,
+  totalRuns: 1,
+  attemptRun: 0,
+  scheduledAt: null,
+  countdownAt: null,
+  countdownTitle: '',
+  countdownNote: '',
+};
+const inputRunCount = { value: '1', disabled: false };
+const btnAutoRun = { disabled: false, innerHTML: '' };
+const btnFetchEmail = { disabled: false };
+const inputEmail = { disabled: false };
+const inputAutoSkipFailures = { disabled: false };
+const autoContinueBar = { style: { display: '' } };
+function setSettingsCardLocked() {}
+function shouldLockRunCountToEmailPool() { return false; }
+function isCustomMailProvider() { return false; }
+function usesCustomEmailPoolGenerator() { return false; }
+function setDefaultAutoRunButton() {}
+function updateAutoDelayInputState() {}
+function updateFallbackThreadIntervalInputState() {}
+function syncScheduledCountdownTicker() {}
+function updateStopButtonState() {}
+function getStepStatuses() { return {}; }
+function updateConfigMenuControls() {}
+function renderContributionMode() {}
+${bundle}
+return {
+  applyAutoRunStatus,
+  getRunCount() {
+    return inputRunCount.value;
+  },
+};
+`)();
+
+  api.applyAutoRunStatus({
+    autoRunning: true,
+    autoRunPhase: 'running',
+    autoRunTotalRuns: 99,
+    autoRunCurrentRun: 1,
+    autoRunAttemptRun: 1,
+  });
+
+  assert.equal(api.getRunCount(), '99');
+});

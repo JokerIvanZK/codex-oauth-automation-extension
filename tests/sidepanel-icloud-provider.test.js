@@ -376,3 +376,112 @@ return { applySettingsState, selectIcloudTargetMailboxType, selectIcloudForwardM
   assert.equal(api.selectIcloudForwardMailProvider.value, 'gmail');
   assert.deepEqual(calls.at(-1), { target: 'forward-mailbox', provider: 'gmail' });
 });
+
+test('applySettingsState does not overwrite manual run count from idle runtime defaults', () => {
+  const bundle = extractFunction('applySettingsState');
+
+  const api = new Function(`
+let latestState = {};
+const inputEmail = { value: '' };
+const inputVpsUrl = { value: '' };
+const inputVpsPassword = { value: '' };
+const selectPanelMode = { value: 'cpa' };
+const inputSub2ApiUrl = { value: '' };
+const inputSub2ApiEmail = { value: '' };
+const inputSub2ApiPassword = { value: '' };
+const inputSub2ApiGroup = { value: '' };
+const inputSub2ApiDefaultProxy = { value: '' };
+const inputCodex2ApiUrl = { value: '' };
+const inputCodex2ApiAdminKey = { value: '' };
+const ICLOUD_PROVIDER = 'icloud';
+const GMAIL_PROVIDER = 'gmail';
+const GMAIL_ALIAS_GENERATOR = 'gmail-alias';
+const CUSTOM_EMAIL_POOL_GENERATOR = 'custom-pool';
+const selectMailProvider = { value: '163' };
+const selectEmailGenerator = { value: 'duck' };
+const selectIcloudHostPreference = { value: 'auto' };
+const selectIcloudFetchMode = { value: 'reuse_existing' };
+const selectIcloudTargetMailboxType = { value: 'icloud-inbox' };
+const selectIcloudForwardMailProvider = { value: 'qq' };
+const checkboxAutoDeleteIcloud = { checked: false };
+const inputAccountRunHistoryHelperBaseUrl = { value: '' };
+const inputContributionNickname = { value: '' };
+const inputContributionQq = { value: '' };
+const inputMail2925UseAccountPool = { checked: false };
+const inputInbucketHost = { value: '' };
+const inputInbucketMailbox = { value: '' };
+const inputCustomMailProviderPool = { value: '' };
+const inputCustomEmailPool = { value: '' };
+const inputHotmailRemoteBaseUrl = { value: '' };
+const inputHotmailLocalBaseUrl = { value: '' };
+const inputLuckmailApiKey = { value: '' };
+const inputLuckmailBaseUrl = { value: '' };
+const selectLuckmailEmailType = { value: 'ms_graph' };
+const inputLuckmailDomain = { value: '' };
+const inputAutoSkipFailures = { checked: false };
+const inputAutoSkipFailuresThreadIntervalMinutes = { value: '' };
+const inputAutoDelayEnabled = { checked: false };
+const inputAutoDelayMinutes = { value: '' };
+const inputAutoStepDelaySeconds = { value: '' };
+const inputVerificationResendCount = { value: '' };
+const inputPhoneVerificationEnabled = { checked: false };
+const DEFAULT_PHONE_VERIFICATION_ENABLED = false;
+const inputHeroSmsApiKey = { value: '' };
+const inputHeroSmsMaxPrice = { value: '' };
+const selectHeroSmsCountry = { value: '52', options: [{ value: '52' }] };
+const inputRunCount = { value: '99' };
+const DEFAULT_VERIFICATION_RESEND_COUNT = 4;
+function syncLatestState(state) { latestState = { ...latestState, ...state }; }
+function syncAutoRunState() {}
+function syncPasswordField() {}
+function renderStepStatuses() {}
+function setLocalCpaStep9Mode() {}
+function isCustomMailProvider() { return false; }
+function setMail2925Mode() {}
+function normalizeIcloudFetchMode(value) { return String(value || '') === 'always_new' ? 'always_new' : 'reuse_existing'; }
+function normalizeIcloudTargetMailboxType(value) { return String(value || '').trim().toLowerCase() === 'forward-mailbox' ? 'forward-mailbox' : 'icloud-inbox'; }
+function normalizeIcloudForwardMailProvider(value) { return String(value || '').trim().toLowerCase() === 'gmail' ? 'gmail' : 'qq'; }
+function normalizeAccountRunHistoryHelperBaseUrlValue(value) { return String(value || '').trim(); }
+function setManagedAliasBaseEmailInputForProvider() {}
+function normalizeCustomEmailPoolEntries(value) { return Array.isArray(value) ? value : []; }
+function setHotmailServiceMode() {}
+function normalizeLuckmailBaseUrl(value) { return String(value || '').trim(); }
+function normalizeLuckmailEmailType(value) { return String(value || '').trim() || 'ms_graph'; }
+function applyCloudflareTempEmailSettingsState() {}
+function renderCloudflareDomainOptions() {}
+function setCloudflareDomainEditMode() {}
+function normalizeAutoRunThreadIntervalMinutes(value) { return Number(value) || 0; }
+function normalizeAutoDelayMinutes(value) { return Number(value) || 30; }
+function formatAutoStepDelayInputValue(value) { return value == null ? '' : String(value); }
+function normalizeVerificationResendCount(value, fallback) { return Number(value) || fallback; }
+function normalizeHeroSmsMaxPriceValue(value) { return String(value ?? '').trim(); }
+function normalizeHeroSmsCountryId() { return 52; }
+function getSelectedHeroSmsCountryOption() { return { label: 'Thailand' }; }
+function updateHeroSmsPlatformDisplay() {}
+function applyAutoRunStatus() {}
+function markSettingsDirty() {}
+function updateAutoDelayInputState() {}
+function updateFallbackThreadIntervalInputState() {}
+function updateAccountRunHistorySettingsUI() {}
+function updatePhoneVerificationSettingsUI() {}
+function updatePanelModeUI() {}
+function updateMailProviderUI() {}
+function isLuckmailProvider() { return false; }
+function updateButtonStates() {}
+${bundle}
+return {
+  applySettingsState,
+  getRunCount() {
+    return inputRunCount.value;
+  },
+};
+`)();
+
+  api.applySettingsState({
+    autoRunTotalRuns: 1,
+    autoRunPhase: 'idle',
+    autoRunning: false,
+  });
+
+  assert.equal(api.getRunCount(), '99');
+});
