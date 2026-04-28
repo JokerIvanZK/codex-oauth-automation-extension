@@ -1355,6 +1355,7 @@ function broadcastDataUpdate() {}
 function isLocalhostOAuthCallbackUrl() {
   return true;
 }
+async function finalizePhoneActivationAfterSuccessfulFlow() {}
 async function finalizeIcloudAliasAfterSuccessfulFlow() {}
 
 ${bundle}
