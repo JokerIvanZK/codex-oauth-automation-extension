@@ -6,8 +6,8 @@ const SUB2API_PANEL_LISTENER_SENTINEL = 'data-multipage-sub2api-panel-listener';
 const SUB2API_DEFAULT_GROUP_NAME = 'codex';
 const SUB2API_DEFAULT_PROXY_NAME = '';
 const SUB2API_DEFAULT_REDIRECT_URI = 'http://localhost:1455/auth/callback';
-const SUB2API_DEFAULT_CONCURRENCY = 10;
-const SUB2API_DEFAULT_PRIORITY = 1;
+const SUB2API_DEFAULT_CONCURRENCY = 1;
+const SUB2API_DEFAULT_PRIORITY = 50;
 const SUB2API_DEFAULT_RATE_MULTIPLIER = 1;
 
 if (document.documentElement.getAttribute(SUB2API_PANEL_LISTENER_SENTINEL) !== '1') {
