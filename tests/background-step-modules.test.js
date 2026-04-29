@@ -8,8 +8,10 @@ test('background imports step 1~10 modules', () => {
   [
     'background/steps/open-chatgpt.js',
     'background/steps/submit-signup-email.js',
+    'background/steps/submit-signup-phone.js',
     'background/steps/fill-password.js',
     'background/steps/fetch-signup-code.js',
+    'background/steps/fetch-signup-phone-code.js',
     'background/steps/fill-profile.js',
     'background/steps/clear-login-cookies.js',
     'background/steps/oauth-login.js',

@@ -20,13 +20,13 @@ test('step definitions module exposes ordered normal and Plus step metadata', ()
     steps.map((step) => step.key),
     [
       'open-chatgpt',
-      'submit-signup-email',
+      'submit-signup-phone',
       'fill-password',
-      'fetch-signup-code',
+      'fetch-signup-phone-code',
       'fill-profile',
       'clear-login-cookies',
       'oauth-login',
-      'fetch-login-code',
+      'add-email-and-fetch-code',
       'confirm-oauth',
       'platform-verify',
     ]
@@ -35,22 +35,22 @@ test('step definitions module exposes ordered normal and Plus step metadata', ()
     plusSteps.map((step) => step.key),
     [
       'open-chatgpt',
-      'submit-signup-email',
+      'submit-signup-phone',
       'fill-password',
-      'fetch-signup-code',
+      'fetch-signup-phone-code',
       'fill-profile',
       'plus-checkout-create',
       'plus-checkout-billing',
       'paypal-approve',
       'plus-checkout-return',
       'oauth-login',
-      'fetch-login-code',
+      'add-email-and-fetch-code',
       'confirm-oauth',
       'platform-verify',
     ]
   );
   assert.equal(plusSteps.some((step) => step.key === 'clear-login-cookies'), false);
-  assert.equal(plusSteps.some((step) => step.key === 'fetch-login-code'), true);
+  assert.equal(plusSteps.some((step) => step.key === 'add-email-and-fetch-code'), true);
   assert.deepStrictEqual(api.getStepIds({ plusModeEnabled: true }), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
   assert.equal(api.getLastStepId({ plusModeEnabled: true }), 13);
 });

@@ -47,8 +47,10 @@
 
     async function executeStep7(state) {
       const visibleStep = getVisibleStep(state, 7);
-      if (!state.email) {
-        throw new Error('缺少邮箱地址，请先完成步骤 3。');
+      const signupPhoneNumber = String(state.signupPhoneNumber || state.currentPhoneActivation?.phoneNumber || '').trim();
+      const loginIdentifierType = signupPhoneNumber ? 'phone' : 'email';
+      if (!state.email && !signupPhoneNumber) {
+        throw new Error('缺少登录账号，请先完成步骤 2 和步骤 3。');
       }
 
       let attempt = 0;
@@ -88,6 +90,9 @@
               source: 'background',
               payload: {
                 email: currentState.email,
+                phoneNumber: signupPhoneNumber || String(currentState.signupPhoneNumber || currentState.currentPhoneActivation?.phoneNumber || '').trim(),
+                countryLabel: String(currentState.heroSmsCountryLabel || '').trim(),
+                loginIdentifierType,
                 password,
                 visibleStep,
               },

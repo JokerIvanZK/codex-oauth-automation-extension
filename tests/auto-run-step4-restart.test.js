@@ -61,7 +61,7 @@ const bundle = [
   extractFunction('runAutoSequenceFromStep'),
 ].join('\n');
 
-test('auto-run restarts from step 1 with the same email after step 4 failure', async () => {
+test('auto-run restarts from step 1 after step 4 failure without prefetching email before phone signup', async () => {
   const api = new Function(`
 const AUTO_STEP_DELAYS = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0, 6: 0, 7: 0, 8: 0, 9: 0, 10: 0 };
 const LAST_STEP_ID = 10;
@@ -199,11 +199,11 @@ return {
     {
       step: 1,
       options: {
-        logLabel: '步骤 4 报错后准备回到步骤 1 沿用当前邮箱重试（第 1 次重开）',
+        logLabel: '步骤 4 报错后准备回到步骤 1 重新获取手机号重试（第 1 次重开）',
       },
     },
   ]);
-  assert.deepStrictEqual(events.emails, ['keep@example.com', 'keep@example.com']);
+  assert.deepStrictEqual(events.emails, []);
   assert.deepStrictEqual(events.steps, [1, 2, 3, 4, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   assert.equal(currentState.email, 'keep@example.com');
   assert.equal(currentState.password, 'Secret123!');

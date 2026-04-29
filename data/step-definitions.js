@@ -3,29 +3,29 @@
 })(typeof self !== 'undefined' ? self : globalThis, function createStepDefinitionsModule() {
   const NORMAL_STEP_DEFINITIONS = [
     { id: 1, order: 10, key: 'open-chatgpt', title: '打开 ChatGPT 官网' },
-    { id: 2, order: 20, key: 'submit-signup-email', title: '注册并输入邮箱' },
+    { id: 2, order: 20, key: 'submit-signup-phone', title: '注册并输入手机号' },
     { id: 3, order: 30, key: 'fill-password', title: '填写密码并继续' },
-    { id: 4, order: 40, key: 'fetch-signup-code', title: '获取注册验证码' },
+    { id: 4, order: 40, key: 'fetch-signup-phone-code', title: '获取手机验证码' },
     { id: 5, order: 50, key: 'fill-profile', title: '填写姓名和生日' },
     { id: 6, order: 60, key: 'clear-login-cookies', title: '清理登录 Cookies' },
-    { id: 7, order: 70, key: 'oauth-login', title: '刷新 OAuth 并登录' },
-    { id: 8, order: 80, key: 'fetch-login-code', title: '获取登录验证码' },
+    { id: 7, order: 70, key: 'oauth-login', title: '手机号登录 OAuth' },
+    { id: 8, order: 80, key: 'add-email-and-fetch-code', title: '添加邮箱并验证' },
     { id: 9, order: 90, key: 'confirm-oauth', title: '自动确认 OAuth' },
     { id: 10, order: 100, key: 'platform-verify', title: '平台回调验证' },
   ];
 
   const PLUS_STEP_DEFINITIONS = [
     { id: 1, order: 10, key: 'open-chatgpt', title: '打开 ChatGPT 官网' },
-    { id: 2, order: 20, key: 'submit-signup-email', title: '注册并输入邮箱' },
+    { id: 2, order: 20, key: 'submit-signup-phone', title: '注册并输入手机号' },
     { id: 3, order: 30, key: 'fill-password', title: '填写密码并继续' },
-    { id: 4, order: 40, key: 'fetch-signup-code', title: '获取注册验证码' },
+    { id: 4, order: 40, key: 'fetch-signup-phone-code', title: '获取手机验证码' },
     { id: 5, order: 50, key: 'fill-profile', title: '填写姓名和生日' },
     { id: 6, order: 60, key: 'plus-checkout-create', title: '创建 Plus Checkout' },
     { id: 7, order: 70, key: 'plus-checkout-billing', title: '填写账单并提交订阅' },
     { id: 8, order: 80, key: 'paypal-approve', title: 'PayPal 登录与授权' },
     { id: 9, order: 90, key: 'plus-checkout-return', title: '订阅回跳确认' },
-    { id: 10, order: 100, key: 'oauth-login', title: '刷新 OAuth 并登录' },
-    { id: 11, order: 110, key: 'fetch-login-code', title: '获取登录验证码' },
+    { id: 10, order: 100, key: 'oauth-login', title: '手机号登录 OAuth' },
+    { id: 11, order: 110, key: 'add-email-and-fetch-code', title: '添加邮箱并验证' },
     { id: 12, order: 120, key: 'confirm-oauth', title: '自动确认 OAuth' },
     { id: 13, order: 130, key: 'platform-verify', title: '平台回调验证' },
   ];

@@ -23,8 +23,10 @@ importScripts(
   'data/address-sources.js',
   'background/steps/open-chatgpt.js',
   'background/steps/submit-signup-email.js',
+  'background/steps/submit-signup-phone.js',
   'background/steps/fill-password.js',
   'background/steps/fetch-signup-code.js',
+  'background/steps/fetch-signup-phone-code.js',
   'background/steps/fill-profile.js',
   'background/steps/clear-login-cookies.js',
   'background/steps/create-plus-checkout.js',
@@ -508,6 +510,7 @@ const DEFAULT_STATE = {
   ...CONTRIBUTION_RUNTIME_DEFAULTS,
   oauthUrl: null, // 运行时抓取到的 OAuth 地址，不要手动预填。
   email: null, // 运行时邮箱，由程序自动获取并写入，不能手动预填。
+  signupPhoneNumber: null, // 运行时注册手机号，由 HeroSMS 获取并写入。
   password: null, // 运行时实际密码，由 customPassword 或程序自动生成后写入。
   accounts: [], // 已生成账号记录：{ email, password, createdAt }。
   accountRunHistory: [], // 账号运行历史快照，实际持久化在 chrome.storage.local。
@@ -5882,6 +5885,8 @@ function getLoginAuthStateLabel(state) {
     case 'verification_page': return '登录验证码页';
     case 'password_page': return '密码页';
     case 'email_page': return '邮箱输入页';
+    case 'phone_entry_page': return '手机号登录页';
+    case 'add_email_page': return '添加邮箱页';
     case 'login_timeout_error_page': return '登录超时报错页';
     case 'oauth_consent_page': return 'OAuth 授权页';
     case 'add_phone_page': return '手机号页';
@@ -5972,6 +5977,8 @@ function getDownstreamStateResets(step, state = {}) {
       lastEmailTimestamp: null,
       signupVerificationRequestedAt: null,
       loginVerificationRequestedAt: null,
+      signupPhoneNumber: null,
+      currentPhoneActivation: null,
       oauthFlowDeadlineAt: null,
       oauthFlowDeadlineSourceUrl: null,
       lastSignupCode: null,
@@ -5986,6 +5993,8 @@ function getDownstreamStateResets(step, state = {}) {
       lastEmailTimestamp: null,
       signupVerificationRequestedAt: null,
       loginVerificationRequestedAt: null,
+      signupPhoneNumber: null,
+      currentPhoneActivation: null,
       oauthFlowDeadlineAt: null,
       oauthFlowDeadlineSourceUrl: null,
       lastSignupCode: null,
@@ -6032,7 +6041,7 @@ function getDownstreamStateResets(step, state = {}) {
       localhostUrl: null,
     };
   }
-  if (stepKey === 'oauth-login' || stepKey === 'fetch-login-code') {
+  if (stepKey === 'oauth-login' || stepKey === 'fetch-login-code' || stepKey === 'add-email-and-fetch-code') {
     return {
       lastLoginCode: null,
       loginVerificationRequestedAt: null,
@@ -6807,6 +6816,7 @@ async function handleStepData(step, payload) {
       break;
     }
     case 2:
+      if (payload.signupPhoneNumber) await setState({ signupPhoneNumber: payload.signupPhoneNumber });
       if (payload.email) await setEmailState(payload.email);
       if (payload.skippedPasswordStep) {
         const latestState = await getState();
@@ -6911,7 +6921,9 @@ const STEP_COMPLETION_SIGNAL_STEPS = new Set([3, 5, 10, 12]);
 const AUTO_RUN_BACKGROUND_COMPLETED_STEP_KEYS = new Set([
   'open-chatgpt',
   'submit-signup-email',
+  'submit-signup-phone',
   'fetch-signup-code',
+  'fetch-signup-phone-code',
   'clear-login-cookies',
   'plus-checkout-create',
   'plus-checkout-billing',
@@ -6919,6 +6931,7 @@ const AUTO_RUN_BACKGROUND_COMPLETED_STEP_KEYS = new Set([
   'plus-checkout-return',
   'oauth-login',
   'fetch-login-code',
+  'add-email-and-fetch-code',
   'confirm-oauth',
 ]);
 const STEP_COMPLETION_SIGNAL_STEP_KEYS = new Set([
@@ -7153,6 +7166,7 @@ const AUTH_CHAIN_STEP_IDS = new Set([7, 8, 9, 10, 11, 12, 13]);
 const AUTH_CHAIN_STEP_KEYS = new Set([
   'oauth-login',
   'fetch-login-code',
+  'add-email-and-fetch-code',
   'confirm-oauth',
   'platform-verify',
 ]);
@@ -8173,7 +8187,7 @@ async function runAutoSequenceFromStep(startStep, context = {}) {
   if (continueCurrentAttempt) {
     await addLog(`=== 目标 ${targetRun}/${totalRuns} 轮：继续当前进度，从步骤 ${startStep} 开始（第 ${attemptRuns} 次尝试）===`, 'info');
   } else {
-    await addLog(`=== 目标 ${targetRun}/${totalRuns} 轮：第 ${attemptRuns} 次尝试，阶段 1，打开官网并进入密码页 ===`, 'info');
+    await addLog(`=== 目标 ${targetRun}/${totalRuns} 轮：第 ${attemptRuns} 次尝试，阶段 1，打开官网并提交手机号 ===`, 'info');
   }
 
   if (currentStartStep <= 1) {
@@ -8181,7 +8195,6 @@ async function runAutoSequenceFromStep(startStep, context = {}) {
   }
 
   if (currentStartStep <= 2) {
-    await ensureAutoEmailReady(targetRun, totalRuns, attemptRuns);
     await executeStepAndWait(2, AUTO_STEP_DELAYS[2]);
   }
 
@@ -8246,11 +8259,11 @@ async function runAutoSequenceFromStep(startStep, context = {}) {
         const preservedPassword = String(preservedState.password || '').trim();
         const emailSuffix = preservedEmail ? `当前邮箱：${preservedEmail}；` : '';
         await addLog(
-          `步骤 4：执行失败，准备沿用当前邮箱回到步骤 1 重新开始（第 ${step4RestartCount} 次重开）。${emailSuffix}原因：${getErrorMessage(err)}`,
+          `步骤 4：手机验证码执行失败，准备回到步骤 1 重新获取手机号并开始本轮重试（第 ${step4RestartCount} 次重开）。${emailSuffix}原因：${getErrorMessage(err)}`,
           'warn'
         );
         await invalidateDownstreamAfterStepRestart(1, {
-          logLabel: `步骤 4 报错后准备回到步骤 1 沿用当前邮箱重试（第 ${step4RestartCount} 次重开）`,
+          logLabel: `步骤 4 报错后准备回到步骤 1 重新获取手机号重试（第 ${step4RestartCount} 次重开）`,
         });
         const restorePayload = {};
         if (preservedEmail) restorePayload.email = preservedEmail;
@@ -8524,6 +8537,17 @@ const step2Executor = self.MultiPageBackgroundStep2?.createStep2Executor({
   sendToContentScriptResilient,
   SIGNUP_PAGE_INJECT_FILES,
 });
+const signupPhoneExecutor = self.MultiPageBackgroundSignupPhoneStep?.createSignupPhoneExecutor({
+  addLog,
+  chrome,
+  completeStepFromBackground,
+  ensureContentScriptReadyOnTab,
+  ensureSignupEntryPageReady,
+  getTabId,
+  isTabAlive,
+  phoneVerificationHelpers,
+  SIGNUP_PAGE_INJECT_FILES,
+});
 const step3Executor = self.MultiPageBackgroundStep3?.createStep3Executor({
   addLog,
   chrome,
@@ -8565,6 +8589,17 @@ const step4Executor = self.MultiPageBackgroundStep4?.createStep4Executor({
   sendToContentScriptResilient,
   shouldUseCustomRegistrationEmail,
   STANDARD_MAIL_VERIFICATION_RESEND_INTERVAL_MS,
+  throwIfStopped,
+});
+const signupPhoneCodeExecutor = self.MultiPageBackgroundSignupPhoneCodeStep?.createSignupPhoneCodeExecutor({
+  addLog,
+  chrome,
+  completeStepFromBackground,
+  ensureContentScriptReadyOnTab,
+  getTabId,
+  isTabAlive,
+  phoneVerificationHelpers,
+  SIGNUP_PAGE_INJECT_FILES,
   throwIfStopped,
 });
 const step5Executor = self.MultiPageBackgroundStep5?.createStep5Executor({
@@ -8614,8 +8649,10 @@ const step8Executor = self.MultiPageBackgroundStep8?.createStep8Executor({
   isVerificationMailPollingError,
   LUCKMAIL_PROVIDER,
   resolveVerificationStep: verificationFlowHelpers.resolveVerificationStep,
+  resolveSignupEmailForFlow,
   rerunStep7ForStep8Recovery: (...args) => rerunStep7ForStep8Recovery(...args),
   reuseOrCreateTab,
+  sendToContentScriptResilient,
   setState,
   shouldUseCustomRegistrationEmail,
   sleepWithStop,
@@ -8694,8 +8731,10 @@ const step10Executor = self.MultiPageBackgroundStep10?.createStep10Executor({
 const stepExecutorsByKey = {
   'open-chatgpt': () => step1Executor.executeStep1(),
   'submit-signup-email': (state) => step2Executor.executeStep2(state),
+  'submit-signup-phone': (state) => signupPhoneExecutor.executeSignupPhoneStep(state),
   'fill-password': (state) => step3Executor.executeStep3(state),
   'fetch-signup-code': (state) => step4Executor.executeStep4(state),
+  'fetch-signup-phone-code': (state) => signupPhoneCodeExecutor.executeSignupPhoneCodeStep(state),
   'fill-profile': (state) => step5Executor.executeStep5(state),
   'clear-login-cookies': () => step6Executor.executeStep6(),
   'plus-checkout-create': (state) => plusCheckoutCreateExecutor.executePlusCheckoutCreate(state),
@@ -8704,6 +8743,7 @@ const stepExecutorsByKey = {
   'plus-checkout-return': (state) => plusReturnConfirmExecutor.executePlusReturnConfirm(state),
   'oauth-login': (state) => step7Executor.executeStep7(state),
   'fetch-login-code': (state) => step8Executor.executeStep8(state),
+  'add-email-and-fetch-code': (state) => step8Executor.executeStep8(state),
   'confirm-oauth': (state) => step9Executor.executeStep9(state),
   'platform-verify': (state) => executeStep10(state),
 };

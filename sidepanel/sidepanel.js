@@ -2471,12 +2471,11 @@ function updateAccountRunHistorySettingsUI() {
 }
 
 function updatePhoneVerificationSettingsUI() {
-  const enabled = Boolean(inputPhoneVerificationEnabled?.checked);
   [rowHeroSmsPlatform, rowHeroSmsCountry, rowHeroSmsApiKey].forEach((row) => {
     if (!row) {
       return;
     }
-    row.style.display = enabled ? '' : 'none';
+    row.style.display = '';
   });
 }
 
@@ -3590,7 +3589,7 @@ function getCustomMailProviderUiCopy() {
 }
 
 function getCustomVerificationPromptCopy(step) {
-  const verificationLabel = step === 4 ? '注册验证码' : '登录验证码';
+  const verificationLabel = step === 4 ? '手机验证码' : '邮箱验证码';
   const isLoginVerificationStep = step === 8 || step === 11;
   return {
     title: `手动处理${verificationLabel}`,

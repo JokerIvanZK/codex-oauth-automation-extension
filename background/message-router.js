@@ -213,7 +213,8 @@
         if (payload.skipLoginVerificationStep) {
           await setState({ loginVerificationRequestedAt: null });
           const latestState = await getState();
-          const loginCodeStep = findStepByKeyAfter(step, 'fetch-login-code', latestState);
+          const loginCodeStep = findStepByKeyAfter(step, 'add-email-and-fetch-code', latestState)
+            || findStepByKeyAfter(step, 'fetch-login-code', latestState);
           if (loginCodeStep) {
             const currentStatus = latestState.stepStatuses?.[loginCodeStep];
             if (!isStepProtectedFromAutoSkip(currentStatus)) {
@@ -227,7 +228,7 @@
         return;
       }
 
-      if (stepKey === 'fetch-login-code') {
+      if (stepKey === 'fetch-login-code' || stepKey === 'add-email-and-fetch-code') {
         await setState({
           lastEmailTimestamp: payload.emailTimestamp || null,
           loginVerificationRequestedAt: null,
@@ -271,6 +272,9 @@
           break;
         }
         case 2:
+          if (payload.signupPhoneNumber) {
+            await setState({ signupPhoneNumber: payload.signupPhoneNumber });
+          }
           if (payload.email) {
             await setEmailState(payload.email);
           }

@@ -77,6 +77,10 @@
           return '密码页';
         case 'email_page':
           return '邮箱输入页';
+        case 'phone_entry_page':
+          return '手机号登录页';
+        case 'add_email_page':
+          return '添加邮箱页';
         case 'login_timeout_error_page':
           return '登录超时报错页';
         case 'oauth_consent_page':

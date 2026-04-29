@@ -63,7 +63,7 @@ test('sidepanel html exposes phone verification toggle and dedicated HeroSMS row
   assert.doesNotMatch(html, /id="input-account-run-history-text-enabled"/);
 });
 
-test('updatePhoneVerificationSettingsUI toggles HeroSMS rows from the sms switch', () => {
+test('updatePhoneVerificationSettingsUI keeps HeroSMS rows visible for phone-first signup', () => {
   const api = new Function(`
 const inputPhoneVerificationEnabled = { checked: false };
 const rowHeroSmsPlatform = { style: { display: 'none' } };
@@ -82,9 +82,9 @@ return {
 `)();
 
   api.updatePhoneVerificationSettingsUI();
-  assert.equal(api.rowHeroSmsPlatform.style.display, 'none');
-  assert.equal(api.rowHeroSmsCountry.style.display, 'none');
-  assert.equal(api.rowHeroSmsApiKey.style.display, 'none');
+  assert.equal(api.rowHeroSmsPlatform.style.display, '');
+  assert.equal(api.rowHeroSmsCountry.style.display, '');
+  assert.equal(api.rowHeroSmsApiKey.style.display, '');
 
   api.inputPhoneVerificationEnabled.checked = true;
   api.updatePhoneVerificationSettingsUI();
