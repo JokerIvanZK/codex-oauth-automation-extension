@@ -11,9 +11,11 @@ const {
   filterReusableLuckmailPurchases,
   isLuckmailMailNewerThanCursor,
   isLuckmailPurchaseForProject,
+  isLuckmailPurchaseUsedByRemoteState,
   normalizeLuckmailBaseUrl,
   normalizeLuckmailEmailType,
   normalizeLuckmailProjectName,
+  normalizeLuckmailPurchase,
   normalizeLuckmailPurchaseListPage,
   normalizeLuckmailTags,
   normalizeLuckmailUsedPurchases,
@@ -107,6 +109,7 @@ test('normalizeLuckmailPurchaseListPage and normalizeLuckmailTags normalize list
       email_address: 'demo@outlook.com',
       token: 'tok-3',
       project_name: 'OpenAi',
+      tag: { id: 7, name: '已使用' },
     }],
     total: 4,
     page: 2,
@@ -116,6 +119,8 @@ test('normalizeLuckmailPurchaseListPage and normalizeLuckmailTags normalize list
   assert.equal(page.page, 2);
   assert.equal(page.page_size, 1);
   assert.equal(page.list[0].project_code, 'openai');
+  assert.equal(page.list[0].tag_id, 7);
+  assert.equal(page.list[0].tag_name, '已使用');
 
   const tags = normalizeLuckmailTags([{
     id: 9,
@@ -130,6 +135,33 @@ test('normalizeLuckmailPurchaseListPage and normalizeLuckmailTags normalize list
     purchase_count: 0,
     created_at: null,
   });
+});
+
+test('normalizeLuckmailPurchase reads nested labels and remote used states', () => {
+  const purchase = normalizeLuckmailPurchase({
+    id: 8,
+    email_address: 'used@outlook.com',
+    token: 'tok-used',
+    project_name: 'openai',
+    label: { id: 12, name: 'already_used' },
+    status: 'used',
+    used: false,
+    is_used: 1,
+  });
+
+  assert.equal(purchase.tag_id, 12);
+  assert.equal(purchase.tag_name, 'already_used');
+  assert.equal(purchase.status, 0);
+  assert.equal(purchase.status_text, 'used');
+  assert.equal(purchase.used, true);
+  assert.equal(isLuckmailPurchaseUsedByRemoteState(purchase), true);
+  assert.equal(isLuckmailPurchaseUsedByRemoteState({
+    id: 9,
+    email_address: 'fresh@outlook.com',
+    token: 'tok-fresh',
+    project_name: 'openai',
+    tag_name: '未使用',
+  }), false);
 });
 
 test('normalizeLuckmailUsedPurchases keeps positive numeric keys only', () => {
@@ -178,6 +210,13 @@ test('pickReusableLuckmailPurchase only returns reusable openai purchase', () =>
     email_address: 'ready@outlook.com',
     token: 'tok-ready',
     project_name: 'OpenAi',
+    warranty_until: '2026-04-15T09:00:00Z',
+  }, {
+    id: 16,
+    email_address: 'remote-used@outlook.com',
+    token: 'tok-remote-used',
+    project_name: 'OpenAi',
+    tag_name: '已使用',
     warranty_until: '2026-04-15T09:00:00Z',
   }];
 

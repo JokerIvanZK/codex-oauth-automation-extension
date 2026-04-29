@@ -83,6 +83,86 @@ test('phone verification helper requests HeroSMS numbers with fixed OpenAI and T
   assert.equal(requests[1].searchParams.get('api_key'), 'demo-key');
 });
 
+test('signup phone flow persists the country snapshot used for the acquired number', async () => {
+  const stateUpdates = [];
+  const submittedPayloads = [];
+  let currentState = {
+    heroSmsApiKey: 'demo-key',
+    heroSmsCountryId: 16,
+    heroSmsCountryLabel: 'United Kingdom',
+    currentPhoneActivation: null,
+  };
+
+  const helpers = api.createPhoneVerificationHelpers({
+    addLog: async () => {},
+    ensureStep8SignupPageReady: async () => {},
+    fetchImpl: async (url) => {
+      const parsedUrl = new URL(url);
+      const action = parsedUrl.searchParams.get('action');
+      if (action === 'getPrices') {
+        return {
+          ok: true,
+          text: async () => buildHeroSmsPricesPayload({ country: '16' }),
+        };
+      }
+      if (action === 'getNumber') {
+        return {
+          ok: true,
+          text: async () => 'ACCESS_NUMBER:123456:447743785490',
+        };
+      }
+      throw new Error(`Unexpected HeroSMS action: ${action}`);
+    },
+    getOAuthFlowStepTimeoutMs: async (defaultTimeoutMs) => defaultTimeoutMs,
+    getState: async () => ({ ...currentState }),
+    sendToContentScriptResilient: async (_source, message) => {
+      if (message.type === 'SUBMIT_SIGNUP_PHONE_NUMBER') {
+        submittedPayloads.push(message.payload);
+        return {
+          submitted: true,
+          url: 'https://auth.openai.com/create-account/password',
+        };
+      }
+      throw new Error(`Unexpected content-script message: ${message.type}`);
+    },
+    setState: async (updates) => {
+      stateUpdates.push(updates);
+      currentState = { ...currentState, ...updates };
+    },
+    sleepWithStop: async () => {},
+    throwIfStopped: () => {},
+  });
+
+  const result = await helpers.startSignupPhoneFlow(1, currentState);
+
+  assert.equal(result.phoneNumber, '447743785490');
+  assert.equal(result.countryId, 16);
+  assert.equal(result.countryLabel, 'United Kingdom');
+  assert.deepStrictEqual(submittedPayloads, [{
+    phoneNumber: '447743785490',
+    countryId: 16,
+    countryLabel: 'United Kingdom',
+  }]);
+  assert.deepStrictEqual(stateUpdates.slice(0, 2), [
+    {
+      currentPhoneActivation: {
+        activationId: '123456',
+        phoneNumber: '447743785490',
+        provider: 'hero-sms',
+        serviceCode: 'dr',
+        countryId: 16,
+        successfulUses: 0,
+        maxUses: 3,
+      },
+    },
+    {
+      signupPhoneNumber: '447743785490',
+      signupPhoneCountryId: 16,
+      signupPhoneCountryLabel: 'United Kingdom',
+    },
+  ]);
+});
+
 test('phone verification helper retries HeroSMS getPrices until it receives a usable lowest price', async () => {
   const requests = [];
   let getPricesAttempt = 0;

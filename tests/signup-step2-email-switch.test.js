@@ -194,6 +194,9 @@ async function sleep(ms) {
 }
 
 ${extractFunction('getSignupEmailInput')}
+${extractFunction('isInsideHiddenPhoneControl')}
+${extractFunction('isUsablePhoneInputElement')}
+${extractFunction('findUsablePhoneInput')}
 ${extractFunction('getSignupPhoneInput')}
 ${extractFunction('findSignupUseEmailTrigger')}
 ${extractFunction('getSignupEmailContinueButton')}
@@ -367,6 +370,9 @@ async function sleep(ms) {
 }
 
 ${extractFunction('getSignupEmailInput')}
+${extractFunction('isInsideHiddenPhoneControl')}
+${extractFunction('isUsablePhoneInputElement')}
+${extractFunction('findUsablePhoneInput')}
 ${extractFunction('getSignupPhoneInput')}
 ${extractFunction('findSignupUseEmailTrigger')}
 ${extractFunction('getSignupEmailContinueButton')}

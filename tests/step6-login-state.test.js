@@ -74,6 +74,9 @@ const realInputBundle = [
   extractFunction('getPageTextSnapshot'),
   extractFunction('isLoginPhoneUsernameKind'),
   extractFunction('isLoginPhoneEntryPageText'),
+  extractFunction('isInsideHiddenPhoneControl'),
+  extractFunction('isUsablePhoneInputElement'),
+  extractFunction('findUsablePhoneInput'),
   extractFunction('getLoginEmailInput'),
   extractFunction('getLoginPhoneInput'),
 ].join('\n');
@@ -181,6 +184,9 @@ const document = {
       return input;
     }
     return null;
+  },
+  querySelectorAll() {
+    return [input];
   },
 };
 

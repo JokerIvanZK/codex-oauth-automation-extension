@@ -81,6 +81,16 @@
           }
 
           await reuseOrCreateTab('signup-page', oauthUrl);
+          const phoneCountryId = Number(
+            currentState.signupPhoneCountryId
+            || currentState.currentPhoneActivation?.countryId
+            || currentState.heroSmsCountryId
+          ) || null;
+          const phoneCountryLabel = String(
+            currentState.signupPhoneCountryLabel
+            || currentState.heroSmsCountryLabel
+            || ''
+          ).trim();
 
           const result = await sendToContentScriptResilient(
             'signup-page',
@@ -91,7 +101,8 @@
               payload: {
                 email: currentState.email,
                 phoneNumber: signupPhoneNumber || String(currentState.signupPhoneNumber || currentState.currentPhoneActivation?.phoneNumber || '').trim(),
-                countryLabel: String(currentState.heroSmsCountryLabel || '').trim(),
+                countryId: phoneCountryId,
+                countryLabel: phoneCountryLabel,
                 loginIdentifierType,
                 password,
                 visibleStep,

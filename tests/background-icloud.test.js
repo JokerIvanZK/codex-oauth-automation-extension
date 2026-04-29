@@ -291,6 +291,26 @@ test('finalizeIcloudAliasAfterSuccessfulFlow ignores non-icloud flows', async ()
   assert.equal(api.calls.setUsed.length, 0);
 });
 
+test('finalizeIcloudAliasAfterSuccessfulFlow ignores LuckMail even when generator is stale icloud', async () => {
+  const api = createApi();
+  const result = await api.finalizeIcloudAliasAfterSuccessfulFlow({
+    email: 'luck@outlook.com',
+    emailGenerator: 'icloud',
+    mailProvider: 'luckmail-api',
+    autoDeleteUsedIcloudAlias: true,
+    manualAliasUsage: {},
+    preservedAliases: {},
+    currentLuckmailPurchase: {
+      email_address: 'luck@outlook.com',
+    },
+  });
+
+  assert.deepEqual(result, { handled: false, deleted: false });
+  assert.equal(api.calls.setUsed.length, 0);
+  assert.equal(api.calls.listCalls, 0);
+  assert.equal(api.calls.deletes.length, 0);
+});
+
 test('icloudRequest retries retryable network failures and then succeeds', async () => {
   const bundle = [
     extractFunction('getIcloudRequestTargetLabel'),

@@ -227,6 +227,50 @@ test('step 7 forwards direct OAuth consent skip metadata when completing', async
   ]);
 });
 
+test('step 7 uses the signup phone country snapshot when logging in by phone', async () => {
+  const source = fs.readFileSync('background/steps/oauth-login.js', 'utf8');
+  const globalScope = {};
+  const api = new Function('self', `${source}; return self.MultiPageBackgroundStep7;`)(globalScope);
+
+  let sentPayload = null;
+  const state = {
+    signupPhoneNumber: '447743785490',
+    signupPhoneCountryId: 16,
+    signupPhoneCountryLabel: 'United Kingdom',
+    heroSmsCountryId: 52,
+    heroSmsCountryLabel: 'Thailand',
+    password: 'secret',
+  };
+
+  const executor = api.createStep7Executor({
+    addLog: async () => {},
+    completeStepFromBackground: async () => {},
+    getErrorMessage: (error) => error?.message || String(error || ''),
+    getLoginAuthStateLabel: (pageState) => pageState || 'unknown',
+    getState: async () => ({ ...state }),
+    isStep6RecoverableResult: (result) => result?.step6Outcome === 'recoverable',
+    isStep6SuccessResult: (result) => result?.step6Outcome === 'success',
+    refreshOAuthUrlBeforeStep6: async () => 'https://oauth.example/latest',
+    reuseOrCreateTab: async () => {},
+    sendToContentScriptResilient: async (_source, message) => {
+      sentPayload = message.payload;
+      return {
+        step6Outcome: 'success',
+        addEmailPage: true,
+      };
+    },
+    STEP6_MAX_ATTEMPTS: 3,
+    throwIfStopped: () => {},
+  });
+
+  await executor.executeStep7(state);
+
+  assert.equal(sentPayload.phoneNumber, '447743785490');
+  assert.equal(sentPayload.countryId, 16);
+  assert.equal(sentPayload.countryLabel, 'United Kingdom');
+  assert.equal(sentPayload.loginIdentifierType, 'phone');
+});
+
 test('step 7 stops immediately when management secret is missing', async () => {
   const source = fs.readFileSync('background/steps/oauth-login.js', 'utf8');
   const globalScope = {};

@@ -114,7 +114,7 @@
       const usedCount = renderedPurchases.filter((purchase) => purchase.used).length;
       const reusableCount = renderedPurchases.filter((purchase) => purchase.reusable).length;
       const disableUsedCount = renderedPurchases.filter((purchase) => purchase.used && !purchase.preserved && !purchase.disabled).length;
-      dom.luckmailSummary.textContent = `已加载 ${renderedPurchases.length} 个 openai 邮箱，其中 ${reusableCount} 个可复用，${usedCount} 个已本地标记为已用。`;
+      dom.luckmailSummary.textContent = `已加载 ${renderedPurchases.length} 个 openai 邮箱，其中 ${reusableCount} 个可复用，${usedCount} 个已标记为已用。`;
       if (dom.btnLuckmailDisableUsed) {
         dom.btnLuckmailDisableUsed.textContent = `禁用已用${disableUsedCount > 0 ? `（${disableUsedCount}）` : ''}`;
         dom.btnLuckmailDisableUsed.disabled = disableUsedCount === 0;
@@ -148,7 +148,7 @@
               <span class="luckmail-tag">${helpers.escapeHtml(helpers.normalizeLuckmailProjectName(purchase.project_name) || 'openai')}</span>
               ${purchase.reusable ? '<span class="luckmail-tag active">可复用</span>' : ''}
               ${purchase.current ? '<span class="luckmail-tag current">当前</span>' : ''}
-              ${purchase.used ? '<span class="luckmail-tag used">已用</span>' : ''}
+              ${purchase.used ? `<span class="luckmail-tag used">${helpers.escapeHtml(purchase.usedRemote ? '远端已用' : '已用')}</span>` : ''}
               ${purchase.preserved ? '<span class="luckmail-tag">保留</span>' : ''}
               ${purchase.disabled ? '<span class="luckmail-tag disabled">已禁用</span>' : ''}
               ${purchase.tag_name && normalizeLuckmailSearchText(purchase.tag_name) !== normalizeLuckmailSearchText(helpers.getLuckmailPreserveTagName())
@@ -356,7 +356,7 @@
     async function disableUsedLuckmailPurchases() {
       const confirmed = await helpers.openConfirmModal({
         title: '禁用已用 LuckMail 邮箱',
-        message: '确认禁用所有本地已用且未保留的 openai LuckMail 邮箱吗？',
+        message: '确认禁用所有已用且未保留的 openai LuckMail 邮箱吗？',
         confirmLabel: '确认禁用',
         confirmVariant: 'btn-danger',
       });

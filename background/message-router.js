@@ -189,8 +189,16 @@
       if (isLuckmailProvider(latestState)) {
         const currentPurchase = getCurrentLuckmailPurchase(latestState);
         if (currentPurchase?.id) {
-          await setLuckmailPurchaseUsedState(currentPurchase.id, true);
-          await addLog(`当前 LuckMail 邮箱 ${currentPurchase.email_address} 已在本地标记为已用。`, 'ok');
+          const usedResult = await setLuckmailPurchaseUsedState(currentPurchase.id, true, {
+            throwOnRemoteError: false,
+          });
+          if (usedResult?.remoteSynced) {
+            await addLog(`当前 LuckMail 邮箱 ${currentPurchase.email_address} 已标记为已用（本地 + 远端标签）。`, 'ok');
+          } else if (usedResult?.remoteError) {
+            await addLog(`当前 LuckMail 邮箱 ${currentPurchase.email_address} 已在本地标记为已用，但远端标签同步失败：${usedResult.remoteError}`, 'warn');
+          } else {
+            await addLog(`当前 LuckMail 邮箱 ${currentPurchase.email_address} 已在本地标记为已用。`, 'ok');
+          }
         }
         await clearLuckmailRuntimeState({ clearEmail: true });
         await addLog('当前 LuckMail 邮箱运行态已清空，下轮将优先复用未用邮箱或重新购买邮箱。', 'ok');
@@ -202,7 +210,9 @@
           excludeLocalhostCallbacks: true,
         });
       }
-      await finalizeIcloudAliasAfterSuccessfulFlow(latestState);
+      if (!isLuckmailProvider(latestState)) {
+        await finalizeIcloudAliasAfterSuccessfulFlow(latestState);
+      }
     }
 
     async function handleStepData(step, payload) {

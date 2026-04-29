@@ -52,6 +52,108 @@ function extractFunction(name) {
   return source.slice(start, end);
 }
 
+test('requestLuckmail retries a timeout and then returns data', async () => {
+  const bundle = [
+    extractFunction('isRetryableLuckmailRequestError'),
+    extractFunction('withLuckmailRetrySuffix'),
+    extractFunction('delayLuckmailRequestRetry'),
+    extractFunction('requestLuckmail'),
+  ].join('\n');
+
+  const factory = new Function(`
+let fetchCalls = [];
+function normalizeLuckmailBaseUrl(value) {
+  return String(value || '').trim() || 'https://mails.luckyous.com';
+}
+function createAbortError() {
+  const error = new Error('timeout');
+  error.name = 'AbortError';
+  return error;
+}
+async function fetch(url, options) {
+  fetchCalls.push({ url, options });
+  if (fetchCalls.length === 1) {
+    throw createAbortError();
+  }
+  return {
+    ok: true,
+    statusText: 'OK',
+    async json() {
+      return { code: 0, data: { ok: true } };
+    },
+  };
+}
+
+${bundle}
+
+return {
+  requestLuckmail,
+  snapshot() {
+    return { fetchCalls };
+  },
+};
+`);
+
+  const api = factory();
+  const result = await api.requestLuckmail('GET', '/api/v1/openapi/email/purchases', {
+    baseUrl: 'https://mails.luckyous.com',
+    apiKey: 'sk-test',
+    params: { page: 1 },
+    retries: 1,
+    retryDelayMs: 0,
+  });
+
+  const snapshot = api.snapshot();
+  assert.deepStrictEqual(result, { ok: true });
+  assert.equal(snapshot.fetchCalls.length, 2);
+  assert.match(snapshot.fetchCalls[0].url, /page=1/);
+  assert.equal(snapshot.fetchCalls[1].options.headers['X-API-Key'], 'sk-test');
+});
+
+test('requestLuckmail reports exhausted timeout retries', async () => {
+  const bundle = [
+    extractFunction('isRetryableLuckmailRequestError'),
+    extractFunction('withLuckmailRetrySuffix'),
+    extractFunction('delayLuckmailRequestRetry'),
+    extractFunction('requestLuckmail'),
+  ].join('\n');
+
+  const factory = new Function(`
+let fetchCalls = 0;
+function normalizeLuckmailBaseUrl(value) {
+  return String(value || '').trim() || 'https://mails.luckyous.com';
+}
+async function fetch() {
+  fetchCalls += 1;
+  const error = new Error('timeout');
+  error.name = 'AbortError';
+  throw error;
+}
+
+${bundle}
+
+return {
+  requestLuckmail,
+  snapshot() {
+    return { fetchCalls };
+  },
+};
+`);
+
+  const api = factory();
+
+  await assert.rejects(
+    api.requestLuckmail('GET', '/api/v1/openapi/email/purchases', {
+      baseUrl: 'https://mails.luckyous.com',
+      apiKey: 'sk-test',
+      retries: 2,
+      retryDelayMs: 0,
+    }),
+    /LuckMail 请求超时：\/api\/v1\/openapi\/email\/purchases（已重试 2 次）/
+  );
+  assert.equal(api.snapshot().fetchCalls, 3);
+});
+
 test('ensureLuckmailPurchaseForFlow buys openai mailbox and defaults email type to ms_graph', async () => {
   const bundle = [
     extractFunction('getLuckmailSessionConfig'),
@@ -292,7 +394,11 @@ return {
 });
 
 test('pollLuckmailVerificationCode snapshots existing mails before accepting new LuckMail code', async () => {
-  const bundle = extractFunction('pollLuckmailVerificationCode');
+  const bundle = [
+    extractFunction('normalizeLuckmailEmailAddress'),
+    extractFunction('resolveLuckmailPurchaseForPolling'),
+    extractFunction('pollLuckmailVerificationCode'),
+  ].join('\n');
 
   const factory = new Function(`
 let currentState = {
@@ -437,6 +543,142 @@ return {
   assert.equal(snapshot.tokenCodeCalls, 2);
 });
 
+test('pollLuckmailVerificationCode restores missing token from current LuckMail email', async () => {
+  const bundle = [
+    extractFunction('normalizeLuckmailEmailAddress'),
+    extractFunction('resolveLuckmailPurchaseForPolling'),
+    extractFunction('pollLuckmailVerificationCode'),
+  ].join('\n');
+
+  const factory = new Function(`
+let currentState = {
+  mailProvider: 'luckmail-api',
+  email: 'restore@outlook.com',
+  currentLuckmailPurchase: null,
+  currentLuckmailMailCursor: {
+    messageId: 'old-mail',
+    receivedAt: '2026-04-14 13:31:15',
+  },
+};
+const logs = [];
+const tokenCodeTokens = [];
+const restoredPurchases = [];
+const cursorWrites = [];
+const DEFAULT_LUCKMAIL_PROJECT_CODE = 'openai';
+
+function getCurrentLuckmailPurchase(state) {
+  return state.currentLuckmailPurchase;
+}
+async function getState() {
+  return currentState;
+}
+function createLuckmailClient() {
+  return {
+    user: {
+      async getTokenCode(token) {
+        tokenCodeTokens.push(token);
+        return {
+          email_address: 'restore@outlook.com',
+          verification_code: '333333',
+          mail: {
+            message_id: 'new-mail',
+            received_at: '2026-04-14 13:32:05',
+            verification_code: '333333',
+          },
+        };
+      },
+      async getTokenMails() {
+        throw new Error('should not snapshot when cursor already exists');
+      },
+    },
+  };
+}
+async function listLuckmailPurchasesByProject() {
+  return [
+    {
+      id: 91,
+      email_address: 'restore@outlook.com',
+      token: 'tok-restored',
+      project_name: 'openai',
+      user_disabled: 0,
+    },
+  ];
+}
+function normalizeLuckmailPurchase(purchase) {
+  return {
+    id: Number(purchase.id) || 0,
+    email_address: String(purchase.email_address || '').trim(),
+    token: String(purchase.token || '').trim(),
+    user_disabled: Number(purchase.user_disabled) || 0,
+  };
+}
+async function setLuckmailPurchaseState(purchase) {
+  currentState = { ...currentState, currentLuckmailPurchase: purchase };
+  restoredPurchases.push(purchase);
+}
+async function setLuckmailMailCursorState(cursor) {
+  currentState = { ...currentState, currentLuckmailMailCursor: cursor };
+  cursorWrites.push(cursor);
+}
+function normalizeLuckmailMailCursor(cursor) {
+  return {
+    messageId: cursor?.messageId || cursor?.message_id || '',
+    receivedAt: cursor?.receivedAt || cursor?.received_at || '',
+  };
+}
+function normalizeLuckmailTimestamp(value) {
+  return Date.parse(String(value || '').replace(' ', 'T') + 'Z') || 0;
+}
+function buildLuckmailMailCursor(mail) {
+  return { messageId: mail.message_id || '', receivedAt: mail.received_at || '' };
+}
+function buildLuckmailBaselineCursor() {
+  throw new Error('should not build baseline');
+}
+function isLuckmailMailNewerThanCursor(mail, cursor) {
+  if (!cursor?.messageId && !cursor?.receivedAt) return true;
+  if (mail.message_id === cursor.messageId) return false;
+  return normalizeLuckmailTimestamp(mail.received_at) > normalizeLuckmailTimestamp(cursor.receivedAt);
+}
+async function addLog(message, level) {
+  logs.push({ message, level });
+}
+function throwIfStopped() {}
+function isStopError() {
+  return false;
+}
+async function sleepWithStop() {}
+function isLuckmailProvider(state) {
+  return state?.mailProvider === 'luckmail-api';
+}
+async function ensureLuckmailPurchaseForFlow() {
+  throw new Error('should restore matching email instead of selecting another purchase');
+}
+
+${bundle}
+
+return {
+  pollLuckmailVerificationCode,
+  snapshot() {
+    return { currentState, logs, tokenCodeTokens, restoredPurchases, cursorWrites };
+  },
+};
+`);
+
+  const api = factory();
+  const result = await api.pollLuckmailVerificationCode(8, await api.snapshot().currentState, {
+    maxAttempts: 1,
+    intervalMs: 1000,
+  });
+
+  const snapshot = api.snapshot();
+  assert.equal(result.code, '333333');
+  assert.deepStrictEqual(snapshot.tokenCodeTokens, ['tok-restored']);
+  assert.equal(snapshot.restoredPurchases.length, 1);
+  assert.equal(snapshot.restoredPurchases[0].email_address, 'restore@outlook.com');
+  assert.equal(snapshot.logs.some((entry) => /从购买列表恢复/.test(entry.message)), true);
+});
+
 test('listLuckmailPurchasesByProject only keeps openai purchases', async () => {
   const bundle = extractFunction('listLuckmailPurchasesByProject');
 
@@ -466,7 +708,102 @@ return { listLuckmailPurchasesByProject };
   assert.deepStrictEqual(result.map((item) => item.id), [1, 3]);
 });
 
-test('disableUsedLuckmailPurchases only disables locally used and non-preserved openai mailboxes', async () => {
+test('setLuckmailPurchaseUsedState marks purchase used locally and via remote tag', async () => {
+  const bundle = [
+    extractFunction('ensureLuckmailUsedTag'),
+    extractFunction('syncLuckmailPurchaseUsedRemoteState'),
+    extractFunction('setLuckmailPurchaseUsedState'),
+  ].join('\n');
+
+  const factory = new Function(`
+let currentState = {
+  luckmailUsedPurchases: {},
+};
+const tagUpdates = [];
+const DEFAULT_LUCKMAIL_USED_TAG_NAME = '已使用';
+const DEFAULT_LUCKMAIL_PROJECT_CODE = 'openai';
+
+function normalizeLuckmailPurchaseId(value) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) && numeric > 0 ? String(Math.floor(numeric)) : '';
+}
+function normalizeLuckmailUsedPurchases(value) {
+  return value && typeof value === 'object' ? { ...value } : {};
+}
+function getLuckmailUsedPurchases(state) {
+  return normalizeLuckmailUsedPurchases(state.luckmailUsedPurchases);
+}
+async function getState() {
+  return currentState;
+}
+async function setLuckmailUsedPurchasesState(usedPurchases) {
+  currentState = { ...currentState, luckmailUsedPurchases: { ...usedPurchases } };
+  return currentState.luckmailUsedPurchases;
+}
+function broadcastDataUpdate() {}
+function normalizeLuckmailTags(tags) {
+  return Array.isArray(tags) ? tags : [];
+}
+function normalizeLuckmailProjectName(value) {
+  return String(value || '').trim().toLowerCase();
+}
+function createLuckmailClient() {
+  return {
+    user: {
+      async getTags() {
+        return [{ id: 8, name: '已使用' }];
+      },
+      async createTag() {
+        throw new Error('should reuse existing used tag');
+      },
+      async setPurchaseTag(purchaseId, payload) {
+        tagUpdates.push({ purchaseId, payload });
+      },
+    },
+  };
+}
+function getLuckmailPreserveTagInfo() {
+  return { id: 0, name: '保留' };
+}
+function normalizeLuckmailPurchase(purchase) {
+  return purchase;
+}
+async function getLuckmailPurchaseById() {
+  throw new Error('should not fetch purchase when marking used');
+}
+function isLuckmailPurchasePreserved() {
+  return false;
+}
+function isLuckmailPurchaseUsedByRemoteState() {
+  return false;
+}
+function getErrorMessage(err) {
+  return err?.message || String(err || '');
+}
+
+${bundle}
+
+return {
+  setLuckmailPurchaseUsedState,
+  snapshot() {
+    return { currentState, tagUpdates };
+  },
+};
+`);
+
+  const api = factory();
+  const result = await api.setLuckmailPurchaseUsedState(42, true);
+  const snapshot = api.snapshot();
+
+  assert.deepStrictEqual(snapshot.currentState.luckmailUsedPurchases, { 42: true });
+  assert.deepStrictEqual(snapshot.tagUpdates, [
+    { purchaseId: 42, payload: { tagId: 8 } },
+  ]);
+  assert.equal(result.remoteSynced, true);
+  assert.equal(result.remoteAction, 'tag-used');
+});
+
+test('disableUsedLuckmailPurchases disables local or remote used and non-preserved openai mailboxes', async () => {
   const bundle = extractFunction('disableUsedLuckmailPurchases');
 
   const factory = new Function(`
@@ -488,6 +825,10 @@ async function ensureManualInteractionAllowed() {
 }
 function getLuckmailUsedPurchases(state) {
   return state.luckmailUsedPurchases;
+}
+function isLuckmailPurchaseUsed(purchase, options) {
+  const key = normalizeLuckmailPurchaseId(purchase.id);
+  return Boolean(key && options.usedPurchases[key]) || purchase.tag_name === '已使用';
 }
 function getLuckmailPreserveTagInfo(state) {
   return {
@@ -513,6 +854,7 @@ async function listLuckmailPurchasesByProject() {
     { id: 2, email_address: 'preserved@outlook.com', user_disabled: 0, tag_id: 9, tag_name: '保留' },
     { id: 3, email_address: 'already-disabled@outlook.com', user_disabled: 1, tag_id: 0, tag_name: '' },
     { id: 4, email_address: 'unused@outlook.com', user_disabled: 0, tag_id: 0, tag_name: '' },
+    { id: 5, email_address: 'remote-used@outlook.com', user_disabled: 0, tag_id: 0, tag_name: '已使用' },
   ];
 }
 async function getState() {
@@ -546,8 +888,8 @@ return {
   const result = await api.disableUsedLuckmailPurchases();
   const snapshot = api.snapshot();
 
-  assert.deepStrictEqual(result.disabledIds, [1]);
-  assert.deepStrictEqual(snapshot.disabledCalls, [{ ids: [1], disabled: 1 }]);
+  assert.deepStrictEqual(result.disabledIds, [1, 5]);
+  assert.deepStrictEqual(snapshot.disabledCalls, [{ ids: [1, 5], disabled: 1 }]);
   assert.deepStrictEqual(snapshot.clearedOptions, { clearEmail: true });
 });
 
@@ -667,6 +1009,7 @@ test('handleStepData step 10 marks current LuckMail purchase as used and clears 
   const factory = new Function(`
 let clearedOptions = null;
 let usedMarker = null;
+let finalizeCalled = false;
 const logs = [];
 
 async function closeLocalhostCallbackTabs() {}
@@ -713,14 +1056,16 @@ function broadcastDataUpdate() {}
 function isLocalhostOAuthCallbackUrl() {
   return true;
 }
-async function finalizeIcloudAliasAfterSuccessfulFlow() {}
+async function finalizeIcloudAliasAfterSuccessfulFlow() {
+  finalizeCalled = true;
+}
 
 ${bundle}
 
 return {
   handleStepData,
   snapshot() {
-    return { clearedOptions, usedMarker, logs };
+    return { clearedOptions, usedMarker, logs, finalizeCalled };
   },
 };
 `);
@@ -733,5 +1078,6 @@ return {
   const snapshot = api.snapshot();
   assert.deepStrictEqual(snapshot.usedMarker, { purchaseId: 123, used: true });
   assert.deepStrictEqual(snapshot.clearedOptions, { clearEmail: true });
+  assert.equal(snapshot.finalizeCalled, false);
   assert.equal(snapshot.logs.at(-1).message, '当前 LuckMail 邮箱运行态已清空，下轮将优先复用未用邮箱或重新购买邮箱。');
 });

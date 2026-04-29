@@ -378,27 +378,9 @@ function getSignupEmailInput() {
 }
 
 function getSignupPhoneInput() {
-  const input = document.querySelector(SIGNUP_PHONE_INPUT_SELECTOR);
-  if (input && isVisibleElement(input)) {
-    return input;
-  }
-
-  const fallback = Array.from(document.querySelectorAll('input')).find((el) => {
-    if (!isVisibleElement(el)) return false;
-    const type = String(el.getAttribute?.('type') || '').trim().toLowerCase();
-    const name = String(el.getAttribute?.('name') || '').trim().toLowerCase();
-    const id = String(el.getAttribute?.('id') || '').trim().toLowerCase();
-    const placeholder = String(el.getAttribute?.('placeholder') || '').trim();
-    const ariaLabel = String(el.getAttribute?.('aria-label') || '').trim();
-    const autocomplete = String(el.getAttribute?.('autocomplete') || '').trim().toLowerCase();
-    const combinedText = `${placeholder} ${ariaLabel}`;
-    return type === 'tel'
-      || autocomplete === 'tel'
-      || /phone|tel/i.test(`${name} ${id}`)
-      || /手机|电话|手机号/.test(combinedText);
-  });
-
-  return fallback || null;
+  return findUsablePhoneInput(SIGNUP_PHONE_INPUT_SELECTOR)
+    || findUsablePhoneInput('input')
+    || null;
 }
 
 function findSignupUseEmailTrigger() {
@@ -984,6 +966,31 @@ function normalizePhoneDigits(value) {
   return digits;
 }
 
+const PHONE_DIAL_CODE_BY_REGION_CODE = Object.freeze({
+  GB: '44',
+  UK: '44',
+  TH: '66',
+  US: '1',
+  CA: '1',
+});
+
+const PHONE_DIAL_CODE_BY_COUNTRY_LABEL = Object.freeze({
+  britain: '44',
+  england: '44',
+  'great britain': '44',
+  thailand: '66',
+  uk: '44',
+  'united kingdom': '44',
+  'united states': '1',
+  'united states of america': '1',
+  usa: '1',
+});
+
+const PHONE_DIAL_CODE_BY_HERO_SMS_COUNTRY_ID = Object.freeze({
+  16: '44',
+  52: '66',
+});
+
 function normalizeCountryLabel(value) {
   return String(value || '')
     .normalize('NFKD')
@@ -998,6 +1005,59 @@ function normalizeCountryLabel(value) {
 function extractDialCodeFromText(value) {
   const match = String(value || '').match(/\(\+\s*(\d{1,4})\s*\)|\+\s*\(\s*(\d{1,4})\s*\)|\+\s*(\d{1,4})\b/);
   return String(match?.[1] || match?.[2] || match?.[3] || '').trim();
+}
+
+function extractStandaloneDialCodeFromText(value) {
+  const match = String(value || '').replace(/\s+/g, ' ').trim().match(/^\+?\s*(\d{1,4})$/);
+  return String(match?.[1] || '').trim();
+}
+
+function isInsideHiddenPhoneControl(element) {
+  if (!element) {
+    return true;
+  }
+  if (element.closest?.('[aria-hidden="true"], [hidden], [data-testid="hidden-select-container"], [data-react-aria-prevent-focus="true"]')) {
+    return true;
+  }
+  return false;
+}
+
+function isUsablePhoneInputElement(element, options = {}) {
+  if (!element || isInsideHiddenPhoneControl(element) || !isVisibleElement(element)) {
+    return false;
+  }
+
+  const type = String(element.getAttribute?.('type') || element.type || '').trim().toLowerCase();
+  if (type === 'hidden') {
+    return false;
+  }
+  const maxLength = Number(element.getAttribute?.('maxlength') || element.maxLength || 0);
+  if (maxLength === 6) {
+    return false;
+  }
+
+  const name = String(element.getAttribute?.('name') || element.name || '').trim().toLowerCase();
+  const id = String(element.getAttribute?.('id') || element.id || '').trim().toLowerCase();
+  const placeholder = String(element.getAttribute?.('placeholder') || '').trim();
+  const ariaLabel = String(element.getAttribute?.('aria-label') || '').trim();
+  const autocomplete = String(element.getAttribute?.('autocomplete') || '').trim().toLowerCase();
+  const combinedText = `${name} ${id} ${placeholder} ${ariaLabel}`;
+
+  if (
+    type === 'tel'
+    || autocomplete === 'tel'
+    || /phone|tel/i.test(`${name} ${id}`)
+    || /手机|电话|手机号|电话号码|国家号码|phone|mobile|telephone/i.test(combinedText)
+  ) {
+    return true;
+  }
+
+  return Boolean(options.allowGenericText && (!type || type === 'text'));
+}
+
+function findUsablePhoneInput(selector, options = {}) {
+  return Array.from(document.querySelectorAll(selector))
+    .find((element) => isUsablePhoneInputElement(element, options)) || null;
 }
 
 function getRegionDisplayName(regionCode, locale) {
@@ -1102,7 +1162,44 @@ function getDisplayedDialCodeForPhoneInput(phoneInput) {
     .filter(isVisibleElement)
     .map((el) => getActionText(el) || el.textContent || '')
     .find((text) => extractDialCodeFromText(text));
-  return extractDialCodeFromText(candidateText);
+  const displayedDialCode = extractDialCodeFromText(candidateText);
+  if (displayedDialCode) {
+    return displayedDialCode;
+  }
+
+  const standaloneText = Array.from(root.querySelectorAll?.('span, div') || [])
+    .filter(isVisibleElement)
+    .map((el) => getActionText(el) || el.textContent || '')
+    .find((text) => extractStandaloneDialCodeFromText(text));
+  return extractStandaloneDialCodeFromText(standaloneText);
+}
+
+function getKnownDialCodeForPhoneCountry(phoneInput, { countryId = null, countryLabel = '' } = {}) {
+  const normalizedCountryId = Math.floor(Number(countryId));
+  if (Number.isFinite(normalizedCountryId) && PHONE_DIAL_CODE_BY_HERO_SMS_COUNTRY_ID[normalizedCountryId]) {
+    return PHONE_DIAL_CODE_BY_HERO_SMS_COUNTRY_ID[normalizedCountryId];
+  }
+
+  const select = getPhoneCountrySelect(phoneInput);
+  const selectedOption = select?.options?.[select.selectedIndex] || null;
+  const selectedRegionCode = String(selectedOption?.value || '').trim().toUpperCase();
+  if (selectedRegionCode && PHONE_DIAL_CODE_BY_REGION_CODE[selectedRegionCode]) {
+    return PHONE_DIAL_CODE_BY_REGION_CODE[selectedRegionCode];
+  }
+
+  const normalizedCountryLabel = normalizeCountryLabel(countryLabel);
+  if (normalizedCountryLabel && PHONE_DIAL_CODE_BY_COUNTRY_LABEL[normalizedCountryLabel]) {
+    return PHONE_DIAL_CODE_BY_COUNTRY_LABEL[normalizedCountryLabel];
+  }
+
+  return '';
+}
+
+function resolvePhoneDialCode(phoneInput, { countryId = null, countryLabel = '', dialCodeFromSelection = '' } = {}) {
+  return normalizePhoneDigits(dialCodeFromSelection)
+    || normalizePhoneDigits(getDisplayedDialCodeForPhoneInput(phoneInput))
+    || normalizePhoneDigits(extractDialCodeFromText(countryLabel))
+    || getKnownDialCodeForPhoneCountry(phoneInput, { countryId, countryLabel });
 }
 
 function toNationalPhoneNumber(value, dialCode) {
@@ -1115,6 +1212,154 @@ function toNationalPhoneNumber(value, dialCode) {
     return digits.slice(normalizedDialCode.length);
   }
   return digits;
+}
+
+function isPhoneInputValueVerified(actualValue, expectedValue) {
+  const actualDigits = normalizePhoneDigits(actualValue);
+  const expectedDigits = normalizePhoneDigits(expectedValue);
+  return Boolean(expectedDigits) && actualDigits === expectedDigits;
+}
+
+async function waitForPhoneInputValue(phoneInput, expectedValue, options = {}) {
+  const {
+    timeout = 1800,
+    pollInterval = 100,
+    resolvePhoneInput = null,
+  } = options;
+  const startedAt = Date.now();
+  let currentInput = phoneInput;
+
+  while (Date.now() - startedAt < timeout) {
+    throwIfStopped();
+    currentInput = (typeof resolvePhoneInput === 'function' && resolvePhoneInput()) || currentInput;
+    if (isPhoneInputValueVerified(currentInput?.value || '', expectedValue)) {
+      return {
+        ok: true,
+        input: currentInput,
+        value: currentInput?.value || '',
+      };
+    }
+    await sleep(pollInterval);
+  }
+
+  currentInput = (typeof resolvePhoneInput === 'function' && resolvePhoneInput()) || currentInput;
+  return {
+    ok: false,
+    input: currentInput,
+    value: currentInput?.value || '',
+  };
+}
+
+function formatPhoneHiddenFormValue({ phoneNumber = '', dialCode = '', inputValue = '' } = {}) {
+  const fullDigits = normalizePhoneDigits(phoneNumber);
+  if (fullDigits) {
+    return `+${fullDigits}`;
+  }
+
+  const localDigits = normalizePhoneDigits(inputValue);
+  if (!localDigits) {
+    return '';
+  }
+  const dialDigits = normalizePhoneDigits(dialCode);
+  return dialDigits ? `+${dialDigits}${localDigits}` : localDigits;
+}
+
+function getPhoneHiddenValueInput(phoneInput) {
+  const form = phoneInput?.form || phoneInput?.closest?.('form') || null;
+  const root = form || getPhoneFieldRoot(phoneInput);
+  const candidates = Array.from(root?.querySelectorAll?.('input[name="phone"], input[type="hidden"][id*="phone" i]') || []);
+  return candidates.find((input) => {
+    if (!input || input === phoneInput) return false;
+    const type = String(input.getAttribute?.('type') || input.type || '').trim().toLowerCase();
+    return type === 'hidden' || !isVisibleElement(input);
+  }) || null;
+}
+
+function setPhoneHiddenValue(input, value) {
+  const normalizedValue = String(value || '');
+  try {
+    const nativeInputValueSetter = typeof window !== 'undefined'
+      ? Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype, 'value')?.set
+      : null;
+    if (nativeInputValueSetter) {
+      nativeInputValueSetter.call(input, normalizedValue);
+    } else {
+      input.value = normalizedValue;
+    }
+  } catch {
+    input.value = normalizedValue;
+  }
+  if (typeof Event !== 'undefined') {
+    input.dispatchEvent?.(new Event('input', { bubbles: true }));
+    input.dispatchEvent?.(new Event('change', { bubbles: true }));
+  }
+}
+
+function syncPhoneHiddenFormValue(phoneInput, options = {}) {
+  const hiddenInput = getPhoneHiddenValueInput(phoneInput);
+  const hiddenValue = formatPhoneHiddenFormValue(options);
+  if (!hiddenInput || !hiddenValue) {
+    return null;
+  }
+
+  setPhoneHiddenValue(hiddenInput, hiddenValue);
+  return {
+    input: hiddenInput,
+    value: hiddenInput.value || '',
+  };
+}
+
+async function fillPhoneInputAndVerify(phoneInput, inputValue, options = {}) {
+  const {
+    step = 7,
+    phoneNumber = '',
+    dialCode = '',
+    resolvePhoneInput = null,
+    maxAttempts = 3,
+  } = options;
+
+  let currentInput = phoneInput;
+  let lastVerification = { ok: false, input: currentInput, value: currentInput?.value || '' };
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    throwIfStopped();
+    currentInput = (typeof resolvePhoneInput === 'function' && resolvePhoneInput()) || currentInput;
+    if (!currentInput) {
+      break;
+    }
+
+    currentInput.focus?.();
+    fillInput(currentInput, inputValue);
+    lastVerification = await waitForPhoneInputValue(currentInput, inputValue, {
+      resolvePhoneInput,
+      timeout: 1600,
+      pollInterval: 100,
+    });
+    if (lastVerification.ok) {
+      const verifiedInput = lastVerification.input || currentInput;
+      const hiddenSync = syncPhoneHiddenFormValue(verifiedInput, { phoneNumber, dialCode, inputValue });
+      const expectedHiddenDigits = normalizePhoneDigits(phoneNumber) || `${normalizePhoneDigits(dialCode)}${normalizePhoneDigits(inputValue)}`;
+      if (hiddenSync && expectedHiddenDigits && normalizePhoneDigits(hiddenSync.value) !== expectedHiddenDigits) {
+        throw new Error(
+          `步骤 ${step}：手机号隐藏提交字段同步失败，期望 ${expectedHiddenDigits}，实际 ${normalizePhoneDigits(hiddenSync.value) || '空'}。`
+        );
+      }
+      return verifiedInput;
+    }
+
+    const currentDigits = normalizePhoneDigits(lastVerification.value);
+    log(
+      `步骤 ${step}：手机号输入框未稳定写入（第 ${attempt}/${maxAttempts} 次），期望本地号 ${inputValue}，当前值 ${currentDigits || '空'}，准备重试。`,
+      'warn'
+    );
+    await sleep(200);
+  }
+
+  const prefixText = dialCode ? `区号 +${dialCode}，` : '';
+  const phoneText = phoneNumber ? `完整号码 ${phoneNumber}，` : '';
+  const actualDigits = normalizePhoneDigits(lastVerification.value);
+  throw new Error(
+    `步骤 ${step}：手机号填写后校验失败，${phoneText}${prefixText}期望输入本地号 ${inputValue}，实际输入框为 ${actualDigits || '空'}，已停止提交。`
+  );
 }
 
 async function waitForSignupPhoneEntryState(options = {}) {
@@ -1198,16 +1443,27 @@ async function submitSignupPhoneNumberAndContinue(payload = {}) {
     throw new Error(`步骤 2：未找到可用的手机号输入入口。URL: ${location.href}`);
   }
 
+  const countryId = payload.countryId;
   const dialCodeFromSelection = await selectCountryForPhoneInput(snapshot.phoneInput, countryLabel);
-  const dialCode = dialCodeFromSelection || getDisplayedDialCodeForPhoneInput(snapshot.phoneInput);
+  const dialCode = resolvePhoneDialCode(snapshot.phoneInput, { countryId, countryLabel, dialCodeFromSelection });
   const inputValue = toNationalPhoneNumber(phoneNumber, dialCode);
   if (!inputValue) {
     throw new Error('步骤 2：手机号为空，无法填写。');
   }
 
   await humanPause(500, 1400);
-  fillInput(snapshot.phoneInput, inputValue);
-  log(`步骤 2：手机号已填写：${phoneNumber}`);
+  const verifiedPhoneInput = await fillPhoneInputAndVerify(snapshot.phoneInput, inputValue, {
+    step: 2,
+    phoneNumber,
+    dialCode,
+    resolvePhoneInput: () => {
+      const nextSnapshot = inspectSignupEntryState();
+      return nextSnapshot.state === 'phone_entry'
+        ? (nextSnapshot.phoneInput || getSignupPhoneInput())
+        : getSignupPhoneInput();
+    },
+  });
+  log(`步骤 2：手机号已填写：${phoneNumber}（区号 ${dialCode ? `+${dialCode}` : '未识别'}，本地号 ${inputValue}）`);
 
   const continueButton = getSignupEmailContinueButton({ allowDisabled: true });
   if (!continueButton || !isActionEnabled(continueButton)) {
@@ -1215,12 +1471,14 @@ async function submitSignupPhoneNumberAndContinue(payload = {}) {
   }
 
   await humanPause(350, 900);
+  syncPhoneHiddenFormValue(verifiedPhoneInput, { phoneNumber, dialCode, inputValue });
   simulateClick(continueButton);
   await ensureSignupPasswordPageReady(45000);
 
   return {
     submitted: true,
     phoneNumber,
+    phoneInputValue: verifiedPhoneInput?.value || inputValue,
     url: location.href,
   };
 }
@@ -2071,23 +2329,21 @@ function getLoginEmailInput() {
 }
 
 function getLoginPhoneInput() {
-  const directInput = document.querySelector(
-    'input[type="tel"]:not([maxlength="6"]), input[name*="phone" i], input[id*="phone" i], input[autocomplete="tel"], input[placeholder*="手机"], input[aria-label*="手机"]'
-  );
-  if (directInput && isVisibleElement(directInput)) {
-    return directInput;
-  }
-
-  if (isLoginPhoneUsernameKind() || isLoginPhoneEntryPageText()) {
-    const usernameInput = document.querySelector(
-      'input[name="username"]:not([maxlength="6"]), input[id*="username" i]:not([maxlength="6"]), input[autocomplete="username"]:not([maxlength="6"]), input[type="text"]:not([maxlength="6"])'
-    );
-    if (usernameInput && isVisibleElement(usernameInput)) {
-      return usernameInput;
-    }
-  }
-
-  return null;
+  const phonePage = isLoginPhoneUsernameKind() || isLoginPhoneEntryPageText();
+  const selector = [
+    'input[type="tel"]:not([maxlength="6"])',
+    'input[name*="phone" i]:not([type="hidden"])',
+    'input[id*="phone" i]:not([type="hidden"])',
+    'input[autocomplete="tel"]',
+    'input[placeholder*="手机"]',
+    'input[aria-label*="手机"]',
+    'input[aria-label*="电话"]',
+    phonePage ? 'input[name="username"]:not([maxlength="6"])' : '',
+    phonePage ? 'input[id*="username" i]:not([maxlength="6"])' : '',
+    phonePage ? 'input[autocomplete="username"]:not([maxlength="6"])' : '',
+    phonePage ? 'input[type="text"]:not([maxlength="6"])' : '',
+  ].filter(Boolean).join(', ');
+  return findUsablePhoneInput(selector, { allowGenericText: phonePage });
 }
 
 function getLoginPasswordInput() {
@@ -3393,6 +3649,7 @@ async function step6LoginFromPhonePage(payload, snapshot) {
   const phoneInput = currentSnapshot.phoneInput || getLoginPhoneInput();
   const phoneNumber = String(payload?.phoneNumber || '').trim();
   const countryLabel = String(payload?.countryLabel || '').trim();
+  const countryId = payload?.countryId;
 
   if (!phoneNumber) {
     return createStep6RecoverableResult('missing_phone_number', currentSnapshot, {
@@ -3406,19 +3663,34 @@ async function step6LoginFromPhonePage(payload, snapshot) {
   }
 
   const dialCodeFromSelection = await selectCountryForPhoneInput(phoneInput, countryLabel);
-  const dialCode = dialCodeFromSelection || getDisplayedDialCodeForPhoneInput(phoneInput);
+  const dialCode = resolvePhoneDialCode(phoneInput, { countryId, countryLabel, dialCodeFromSelection });
   const inputValue = toNationalPhoneNumber(phoneNumber, dialCode);
   if (!inputValue) {
     throw new Error('步骤 7：手机号为空，无法填写。');
   }
 
   await humanPause(500, 1400);
-  fillInput(phoneInput, inputValue);
-  log(`步骤 7：已填写手机号 ${phoneNumber}`);
+  const verifiedPhoneInput = await fillPhoneInputAndVerify(phoneInput, inputValue, {
+    step: 7,
+    phoneNumber,
+    dialCode,
+    resolvePhoneInput: () => {
+      const nextSnapshot = normalizeStep6Snapshot(inspectLoginAuthState());
+      return nextSnapshot.state === 'phone_entry_page'
+        ? (nextSnapshot.phoneInput || getLoginPhoneInput())
+        : getLoginPhoneInput();
+    },
+  });
+  log(`步骤 7：已填写手机号 ${phoneNumber}（区号 ${dialCode ? `+${dialCode}` : '未识别'}，本地号 ${inputValue}）`);
 
   await sleep(500);
+  syncPhoneHiddenFormValue(verifiedPhoneInput, { phoneNumber, dialCode, inputValue });
+  const submitSnapshot = normalizeStep6Snapshot(inspectLoginAuthState());
+  const submitButton = submitSnapshot.state === 'phone_entry_page'
+    ? (submitSnapshot.submitButton || currentSnapshot.submitButton)
+    : currentSnapshot.submitButton;
   const phoneSubmittedAt = Date.now();
-  await triggerLoginSubmitAction(currentSnapshot.submitButton, phoneInput);
+  await triggerLoginSubmitAction(submitButton, verifiedPhoneInput);
   log('步骤 7：已提交手机号');
 
   const transition = await waitForStep6PhoneSubmitTransition(phoneSubmittedAt);

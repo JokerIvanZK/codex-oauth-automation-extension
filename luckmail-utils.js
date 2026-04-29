@@ -11,6 +11,14 @@
   const DEFAULT_LUCKMAIL_PROJECT_CODE = 'openai';
   const DEFAULT_LUCKMAIL_PRESERVE_TAG_NAME = '保留';
   const LUCKMAIL_EMAIL_TYPES = ['self_built', 'ms_imap', 'ms_graph', 'google_variant'];
+  const LUCKMAIL_REMOTE_USED_TEXT_PATTERNS = [
+    /已(?:经)?(?:用|使用|注册|验证)/,
+    /(?:使用|注册|验证)过/,
+    /^(?:used|already[-_\s]*used|used[-_\s]*email|registered|verified|consumed)$/i,
+  ];
+  const LUCKMAIL_REMOTE_UNUSED_TEXT_PATTERNS = [
+    /^(?:未用|未使用|未注册|未验证|可用|空闲|unused|not[-_\s]*used|available|fresh|new)$/i,
+  ];
 
   function firstNonEmptyString(values) {
     for (const value of values) {
@@ -26,6 +34,67 @@
       .replace(/\s+/g, ' ')
       .trim()
       .toLowerCase();
+  }
+
+  function firstObject(values) {
+    for (const value of values) {
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return value;
+      }
+    }
+    return {};
+  }
+
+  function firstArrayItem(values) {
+    for (const value of values) {
+      if (Array.isArray(value) && value.length > 0) {
+        return value[0];
+      }
+    }
+    return null;
+  }
+
+  function normalizeBooleanFlag(value) {
+    if (value === true || value === 1) return true;
+    if (value === false || value === 0) return false;
+    const normalized = normalizeText(value);
+    if (!normalized) return false;
+    if (/^(?:1|true|yes|y|used|already[-_\s]*used|已用|已使用)$/.test(normalized)) {
+      return true;
+    }
+    if (/^(?:0|false|no|n|unused|not[-_\s]*used|未用|未使用)$/.test(normalized)) {
+      return false;
+    }
+    return false;
+  }
+
+  function getLuckmailTagLikeFields(safeItem = {}) {
+    const tagObject = firstObject([safeItem.tag, firstArrayItem([safeItem.tags])]);
+    const labelObject = firstObject([safeItem.label, firstArrayItem([safeItem.labels])]);
+    const tagName = firstNonEmptyString([
+      safeItem.tag_name,
+      safeItem.tagName,
+      tagObject.name,
+      tagObject.tag_name,
+      typeof safeItem.tag === 'string' ? safeItem.tag : '',
+      safeItem.label_name,
+      safeItem.labelName,
+      labelObject.name,
+      labelObject.label_name,
+      typeof safeItem.label === 'string' ? safeItem.label : '',
+    ]);
+    const tagId = Number(
+      safeItem.tag_id
+      || safeItem.tagId
+      || tagObject.id
+      || tagObject.tag_id
+      || safeItem.label_id
+      || safeItem.labelId
+      || labelObject.id
+      || labelObject.label_id
+      || 0
+    ) || 0;
+    return { tagId, tagName };
   }
 
   function normalizeTimestamp(value) {
@@ -126,6 +195,15 @@
   function normalizeLuckmailPurchase(item = {}) {
     const safeItem = item && typeof item === 'object' ? item : {};
     const projectName = firstNonEmptyString([safeItem.project_name, safeItem.project]);
+    const tagInfo = getLuckmailTagLikeFields(safeItem);
+    const statusText = firstNonEmptyString([
+      safeItem.status_text,
+      safeItem.statusText,
+      safeItem.status_label,
+      safeItem.statusLabel,
+      safeItem.state,
+      typeof safeItem.status === 'string' ? safeItem.status : '',
+    ]);
     return {
       id: Number(safeItem.id) || 0,
       email_address: firstNonEmptyString([safeItem.email_address, safeItem.address]),
@@ -134,12 +212,16 @@
       project_code: normalizeLuckmailProjectName(projectName),
       price: firstNonEmptyString([safeItem.price]) || '0.0000',
       status: Number(safeItem.status) || 0,
-      tag_id: Number(safeItem.tag_id) || 0,
-      tag_name: firstNonEmptyString([safeItem.tag_name]),
+      status_text: statusText,
+      tag_id: tagInfo.tagId,
+      tag_name: tagInfo.tagName,
       user_disabled: Number(safeItem.user_disabled) || 0,
       warranty_hours: Number(safeItem.warranty_hours) || 0,
       warranty_until: firstNonEmptyString([safeItem.warranty_until]) || null,
       created_at: firstNonEmptyString([safeItem.created_at]) || null,
+      used: [safeItem.used, safeItem.is_used, safeItem.has_used].some((value) => normalizeBooleanFlag(value)),
+      used_at: firstNonEmptyString([safeItem.used_at, safeItem.last_used_at, safeItem.consumed_at]) || null,
+      usage_status: firstNonEmptyString([safeItem.usage_status, safeItem.used_state, safeItem.use_status]),
     };
   }
 
@@ -313,6 +395,38 @@
     return Boolean(normalizedPurchase.tag_name && normalizeText(normalizedPurchase.tag_name) === expectedTagName);
   }
 
+  function hasLuckmailRemoteUsedTextSignal(value) {
+    const text = normalizeText(value);
+    if (!text) return false;
+    if (LUCKMAIL_REMOTE_UNUSED_TEXT_PATTERNS.some((pattern) => pattern.test(text))) {
+      return false;
+    }
+    return LUCKMAIL_REMOTE_USED_TEXT_PATTERNS.some((pattern) => pattern.test(text));
+  }
+
+  function isLuckmailPurchaseUsedByRemoteState(purchase) {
+    const normalizedPurchase = normalizeLuckmailPurchase(purchase);
+    if (normalizedPurchase.used) {
+      return true;
+    }
+    if (normalizedPurchase.used_at) {
+      return true;
+    }
+    return [
+      normalizedPurchase.tag_name,
+      normalizedPurchase.status_text,
+      normalizedPurchase.usage_status,
+    ].some((value) => hasLuckmailRemoteUsedTextSignal(value));
+  }
+
+  function isLuckmailPurchaseUsed(purchase, options = {}) {
+    const normalizedPurchase = normalizeLuckmailPurchase(purchase);
+    const usedPurchases = normalizeLuckmailUsedPurchases(options.usedPurchases);
+    const purchaseId = normalizeLuckmailPurchaseId(normalizedPurchase.id);
+    return Boolean(purchaseId && usedPurchases[purchaseId])
+      || isLuckmailPurchaseUsedByRemoteState(normalizedPurchase);
+  }
+
   function isLuckmailPurchaseReusable(purchase, options = {}) {
     const normalizedPurchase = normalizeLuckmailPurchase(purchase);
     const usedPurchases = normalizeLuckmailUsedPurchases(options.usedPurchases);
@@ -328,6 +442,9 @@
       return false;
     }
     if (purchaseId && usedPurchases[purchaseId]) {
+      return false;
+    }
+    if (isLuckmailPurchaseUsedByRemoteState(normalizedPurchase)) {
       return false;
     }
     if (isLuckmailPurchasePreserved(normalizedPurchase, options)) {
@@ -425,6 +542,8 @@
     isLuckmailPurchaseExpired,
     isLuckmailPurchaseForProject,
     isLuckmailPurchasePreserved,
+    isLuckmailPurchaseUsed,
+    isLuckmailPurchaseUsedByRemoteState,
     isLuckmailPurchaseReusable,
     normalizeLuckmailBaseUrl,
     normalizeLuckmailEmailType,

@@ -939,16 +939,21 @@
           await clearCurrentActivation();
           state = await getState().catch(() => state || {});
         }
+        const countryConfig = resolveCountryConfig(state);
         activation = await acquirePhoneActivation(state);
         await persistCurrentActivation(activation);
         await setState({
           signupPhoneNumber: activation.phoneNumber,
+          signupPhoneCountryId: Number(activation.countryId) || countryConfig.id,
+          signupPhoneCountryLabel: countryConfig.label,
         });
         const result = await submitSignupPhoneNumber(tabId, activation.phoneNumber);
         await addLog(`步骤 2：已提交注册手机号 ${activation.phoneNumber}，等待进入密码页。`, 'info');
         return {
           ...result,
           activation,
+          countryId: Number(activation.countryId) || countryConfig.id,
+          countryLabel: countryConfig.label,
           phoneNumber: activation.phoneNumber,
         };
       } catch (error) {
@@ -957,7 +962,11 @@
           await cancelPhoneActivation(state, activation);
         }
         await clearCurrentActivation();
-        await setState({ signupPhoneNumber: null });
+        await setState({
+          signupPhoneNumber: null,
+          signupPhoneCountryId: null,
+          signupPhoneCountryLabel: '',
+        });
         throw error;
       }
     }
