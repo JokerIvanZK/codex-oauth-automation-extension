@@ -470,6 +470,13 @@ const PERSISTED_SETTING_DEFAULTS = {
   hotmailServiceMode: HOTMAIL_SERVICE_MODE_LOCAL,
   hotmailRemoteBaseUrl: DEFAULT_HOTMAIL_REMOTE_BASE_URL,
   hotmailLocalBaseUrl: DEFAULT_HOTMAIL_LOCAL_BASE_URL,
+  luckmailApiKey: '',
+  luckmailBaseUrl: DEFAULT_LUCKMAIL_BASE_URL,
+  luckmailEmailType: DEFAULT_LUCKMAIL_EMAIL_TYPE,
+  luckmailDomain: '',
+  luckmailUsedPurchases: {},
+  luckmailPreserveTagId: 0,
+  luckmailPreserveTagName: DEFAULT_LUCKMAIL_PRESERVE_TAG_NAME,
   cloudflareDomain: '',
   cloudflareDomains: [],
   cloudflareTempEmailBaseUrl: '',
@@ -1301,6 +1308,20 @@ function normalizePersistentSettingValue(key, value) {
       return normalizeHotmailRemoteBaseUrl(value);
     case 'hotmailLocalBaseUrl':
       return normalizeHotmailLocalBaseUrl(value);
+    case 'luckmailApiKey':
+      return String(value || '').trim();
+    case 'luckmailBaseUrl':
+      return normalizeLuckmailBaseUrl(value);
+    case 'luckmailEmailType':
+      return normalizeLuckmailEmailType(value);
+    case 'luckmailDomain':
+      return String(value || '').trim();
+    case 'luckmailUsedPurchases':
+      return normalizeLuckmailUsedPurchases(value);
+    case 'luckmailPreserveTagId':
+      return Number(value) || 0;
+    case 'luckmailPreserveTagName':
+      return String(value || '').trim() || DEFAULT_LUCKMAIL_PRESERVE_TAG_NAME;
     case 'cloudflareDomain':
       return normalizeCloudflareDomain(value);
     case 'cloudflareDomains':
@@ -1980,6 +2001,28 @@ async function resetState() {
     getPersistedSettings(),
     getPersistedAliasState(),
   ]);
+  const hasPreviousSessionValue = (key) => Object.prototype.hasOwnProperty.call(prev, key);
+  const preservedLuckmailApiKey = hasPreviousSessionValue('luckmailApiKey')
+    ? prev.luckmailApiKey
+    : persistedSettings.luckmailApiKey;
+  const preservedLuckmailBaseUrl = hasPreviousSessionValue('luckmailBaseUrl')
+    ? prev.luckmailBaseUrl
+    : persistedSettings.luckmailBaseUrl;
+  const preservedLuckmailEmailType = hasPreviousSessionValue('luckmailEmailType')
+    ? prev.luckmailEmailType
+    : persistedSettings.luckmailEmailType;
+  const preservedLuckmailDomain = hasPreviousSessionValue('luckmailDomain')
+    ? prev.luckmailDomain
+    : persistedSettings.luckmailDomain;
+  const preservedLuckmailUsedPurchases = hasPreviousSessionValue('luckmailUsedPurchases')
+    ? prev.luckmailUsedPurchases
+    : persistedSettings.luckmailUsedPurchases;
+  const preservedLuckmailPreserveTagId = hasPreviousSessionValue('luckmailPreserveTagId')
+    ? prev.luckmailPreserveTagId
+    : persistedSettings.luckmailPreserveTagId;
+  const preservedLuckmailPreserveTagName = hasPreviousSessionValue('luckmailPreserveTagName')
+    ? prev.luckmailPreserveTagName
+    : persistedSettings.luckmailPreserveTagName;
   const contributionModeState = buildContributionModeState(Boolean(prev.contributionMode), persistedSettings, prev);
   await chrome.storage.session.clear();
   await chrome.storage.session.set({
@@ -1992,13 +2035,13 @@ async function resetState() {
     accounts: prev.accounts || [],
     tabRegistry: prev.tabRegistry || {},
     sourceLastUrls: prev.sourceLastUrls || {},
-    luckmailApiKey: String(prev.luckmailApiKey || ''),
-    luckmailBaseUrl: normalizeLuckmailBaseUrl(prev.luckmailBaseUrl),
-    luckmailEmailType: normalizeLuckmailEmailType(prev.luckmailEmailType),
-    luckmailDomain: String(prev.luckmailDomain || '').trim(),
-    luckmailUsedPurchases: normalizeLuckmailUsedPurchases(prev.luckmailUsedPurchases),
-    luckmailPreserveTagId: Number(prev.luckmailPreserveTagId) || 0,
-    luckmailPreserveTagName: String(prev.luckmailPreserveTagName || '').trim() || DEFAULT_LUCKMAIL_PRESERVE_TAG_NAME,
+    luckmailApiKey: String(preservedLuckmailApiKey || ''),
+    luckmailBaseUrl: normalizeLuckmailBaseUrl(preservedLuckmailBaseUrl),
+    luckmailEmailType: normalizeLuckmailEmailType(preservedLuckmailEmailType),
+    luckmailDomain: String(preservedLuckmailDomain || '').trim(),
+    luckmailUsedPurchases: normalizeLuckmailUsedPurchases(preservedLuckmailUsedPurchases),
+    luckmailPreserveTagId: Number(preservedLuckmailPreserveTagId) || 0,
+    luckmailPreserveTagName: String(preservedLuckmailPreserveTagName || '').trim() || DEFAULT_LUCKMAIL_PRESERVE_TAG_NAME,
     currentLuckmailPurchase: null,
     currentLuckmailMailCursor: null,
     preferredIcloudHost: prev.preferredIcloudHost || '',

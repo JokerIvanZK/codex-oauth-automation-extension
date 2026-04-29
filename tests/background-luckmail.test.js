@@ -154,6 +154,74 @@ return {
   assert.equal(api.snapshot().fetchCalls, 3);
 });
 
+test('persistent settings include LuckMail API key and session config', () => {
+  const bundle = [
+    extractFunction('normalizePersistentSettingValue'),
+    extractFunction('buildPersistentSettingsPayload'),
+  ].join('\n');
+
+  const factory = new Function(`
+const DEFAULT_LUCKMAIL_BASE_URL = 'https://mails.luckyous.com';
+const DEFAULT_LUCKMAIL_EMAIL_TYPE = 'ms_graph';
+const DEFAULT_LUCKMAIL_PRESERVE_TAG_NAME = '保留';
+const PERSISTED_SETTING_DEFAULTS = {
+  luckmailApiKey: '',
+  luckmailBaseUrl: DEFAULT_LUCKMAIL_BASE_URL,
+  luckmailEmailType: DEFAULT_LUCKMAIL_EMAIL_TYPE,
+  luckmailDomain: '',
+  luckmailUsedPurchases: {},
+  luckmailPreserveTagId: 0,
+  luckmailPreserveTagName: DEFAULT_LUCKMAIL_PRESERVE_TAG_NAME,
+};
+const PERSISTED_SETTING_KEYS = Object.keys(PERSISTED_SETTING_DEFAULTS);
+function resolveLegacyAutoStepDelaySeconds() {
+  return undefined;
+}
+function normalizeLuckmailBaseUrl(value) {
+  const normalized = String(value || '').trim() || DEFAULT_LUCKMAIL_BASE_URL;
+  return normalized.replace(/\\/$/, '');
+}
+function normalizeLuckmailEmailType(value) {
+  return ['self_built', 'ms_imap', 'ms_graph', 'google_variant'].includes(String(value || '').trim())
+    ? String(value || '').trim()
+    : DEFAULT_LUCKMAIL_EMAIL_TYPE;
+}
+function normalizeLuckmailUsedPurchases(value) {
+  const result = {};
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
+  for (const [key, used] of Object.entries(value)) {
+    if (/^[1-9]\\d*$/.test(key) && used) result[key] = true;
+  }
+  return result;
+}
+
+${bundle}
+
+return { buildPersistentSettingsPayload };
+`);
+
+  const api = factory();
+  const payload = api.buildPersistentSettingsPayload({
+    luckmailApiKey: ' sk-live ',
+    luckmailBaseUrl: 'https://mails.example.com/',
+    luckmailEmailType: 'ms_imap',
+    luckmailDomain: ' outlook.com ',
+    luckmailUsedPurchases: { 8: true, bad: true, 9: false },
+    luckmailPreserveTagId: '12',
+    luckmailPreserveTagName: ' 长期保留 ',
+  });
+
+  assert.deepStrictEqual(payload, {
+    luckmailApiKey: 'sk-live',
+    luckmailBaseUrl: 'https://mails.example.com',
+    luckmailEmailType: 'ms_imap',
+    luckmailDomain: 'outlook.com',
+    luckmailUsedPurchases: { 8: true },
+    luckmailPreserveTagId: 12,
+    luckmailPreserveTagName: '长期保留',
+  });
+});
+
 test('ensureLuckmailPurchaseForFlow buys openai mailbox and defaults email type to ms_graph', async () => {
   const bundle = [
     extractFunction('getLuckmailSessionConfig'),
@@ -999,6 +1067,103 @@ test('resetState preserves LuckMail session config, used map, and preserve tag c
   assert.deepStrictEqual(snapshot.storedPayload.luckmailUsedPurchases, { 88: true });
   assert.equal(snapshot.storedPayload.luckmailPreserveTagId, 9);
   assert.equal(snapshot.storedPayload.luckmailPreserveTagName, '保留');
+  assert.equal(snapshot.storedPayload.currentLuckmailPurchase, null);
+  assert.equal(snapshot.storedPayload.currentLuckmailMailCursor, null);
+});
+
+test('resetState restores persisted LuckMail API key when session storage was restarted', async () => {
+  const bundle = [
+    extractFunction('buildContributionModeState'),
+    extractFunction('resetState'),
+  ].join('\n');
+
+  const factory = new Function([
+    'let storedPayload = null;',
+    "const LOG_PREFIX = '[test]';",
+    "const DEFAULT_LUCKMAIL_PRESERVE_TAG_NAME = '保留';",
+    'const DEFAULT_STATE = {',
+    "  luckmailApiKey: '',",
+    "  luckmailBaseUrl: 'https://mails.luckyous.com',",
+    "  luckmailEmailType: 'ms_graph',",
+    "  luckmailDomain: '',",
+    '  luckmailUsedPurchases: {},',
+    '  luckmailPreserveTagId: 0,',
+    "  luckmailPreserveTagName: '保留',",
+    '};',
+    'const CONTRIBUTION_RUNTIME_DEFAULTS = {',
+    '  contributionMode: false,',
+    "  contributionSessionId: '',",
+    "  contributionAuthUrl: '',",
+    "  contributionAuthState: '',",
+    "  contributionCallbackUrl: '',",
+    "  contributionStatus: '',",
+    "  contributionStatusMessage: '',",
+    '  contributionLastPollAt: 0,',
+    "  contributionCallbackStatus: 'idle',",
+    "  contributionCallbackMessage: '',",
+    '  contributionAuthOpenedAt: 0,',
+    '  contributionAuthTabId: 0,',
+    '};',
+    'const CONTRIBUTION_RUNTIME_KEYS = Object.keys(CONTRIBUTION_RUNTIME_DEFAULTS);',
+    'function normalizeLuckmailBaseUrl(value) {',
+    "  const normalized = String(value || '').trim() || 'https://mails.luckyous.com';",
+    "  return normalized.replace(/\\/$/, '');",
+    '}',
+    'function normalizeLuckmailEmailType(value) {',
+    "  return ['self_built', 'ms_imap', 'ms_graph', 'google_variant'].includes(String(value || '').trim())",
+    "    ? String(value || '').trim()",
+    "    : 'ms_graph';",
+    '}',
+    'function normalizeLuckmailUsedPurchases(value) {',
+    '  return value || {};',
+    '}',
+    'async function getPersistedSettings() {',
+    '  return {',
+    "    luckmailApiKey: 'sk-persisted',",
+    "    luckmailBaseUrl: 'https://persisted.example.com/',",
+    "    luckmailEmailType: 'google_variant',",
+    "    luckmailDomain: 'gmail.com',",
+    '    luckmailUsedPurchases: { 99: true },',
+    '    luckmailPreserveTagId: 19,',
+    "    luckmailPreserveTagName: '长期保留',",
+    '  };',
+    '}',
+    'async function getPersistedAliasState() {',
+    '  return {};',
+    '}',
+    'const chrome = {',
+    '  storage: {',
+    '    session: {',
+    '      async get() {',
+    "        return { seenCodes: ['seen-1'] };",
+    '      },',
+    '      async clear() {},',
+    '      async set(payload) {',
+    '        storedPayload = payload;',
+    '      },',
+    '    },',
+    '  },',
+    '};',
+    bundle,
+    'return {',
+    '  resetState,',
+    '  snapshot() {',
+    '    return { storedPayload };',
+    '  },',
+    '};',
+  ].join('\n'));
+
+  const api = factory();
+  await api.resetState();
+  const snapshot = api.snapshot();
+
+  assert.equal(snapshot.storedPayload.luckmailApiKey, 'sk-persisted');
+  assert.equal(snapshot.storedPayload.luckmailBaseUrl, 'https://persisted.example.com');
+  assert.equal(snapshot.storedPayload.luckmailEmailType, 'google_variant');
+  assert.equal(snapshot.storedPayload.luckmailDomain, 'gmail.com');
+  assert.deepStrictEqual(snapshot.storedPayload.luckmailUsedPurchases, { 99: true });
+  assert.equal(snapshot.storedPayload.luckmailPreserveTagId, 19);
+  assert.equal(snapshot.storedPayload.luckmailPreserveTagName, '长期保留');
   assert.equal(snapshot.storedPayload.currentLuckmailPurchase, null);
   assert.equal(snapshot.storedPayload.currentLuckmailMailCursor, null);
 });
