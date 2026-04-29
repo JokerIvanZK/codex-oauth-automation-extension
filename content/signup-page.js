@@ -128,6 +128,7 @@ const VERIFICATION_CODE_INPUT_SELECTOR = [
 const ONE_TIME_CODE_LOGIN_PATTERN = /使用一次性验证码登录|改用(?:一次性)?验证码(?:登录)?|使用验证码登录|一次性验证码|验证码登录|one[-\s]*time\s*(?:passcode|password|code)|use\s+(?:a\s+)?one[-\s]*time\s*(?:passcode|password|code)(?:\s+instead)?|use\s+(?:a\s+)?code(?:\s+instead)?|sign\s+in\s+with\s+(?:email|code)|email\s+(?:me\s+)?(?:a\s+)?code/i;
 const LOGIN_ENTRY_ACTION_PATTERN = /(?:^|\b)(?:log\s*in|sign\s*in|continue\s+(?:with|using)\s+(?:email|chatgpt)|use\s+(?:an?\s+)?email|email\s+address)(?:\b|$)|登录|登陆|邮箱|电子邮件/i;
 const LOGIN_PHONE_ENTRY_ACTION_PATTERN = /continue\s+(?:with|using)\s+(?:a\s+)?phone(?:\s+number)?|use\s+(?:a\s+)?phone(?:\s+number)?|sign\s*(?:in|up)\s+with\s+(?:a\s+)?phone|手机(?:号|号码)?登录|继续使用(?:手机|手机号|电话号码)(?:号码)?登录|改用(?:手机|手机号|电话号码)(?:号码)?登录|phone\s+number|telephone/i;
+const LOGIN_PHONE_ENTRY_PAGE_PATTERN = /(?:\+\s*\(?\d{1,4}\)?\s*)?(?:手机号码|手机号|电话号码)|(?:phone|mobile)\s+number|telephone/i;
 const LOGIN_EXTERNAL_IDP_PATTERN = /google|microsoft|apple|sso|single\s+sign[-\s]*on|企业|工作区|workspace/i;
 const LOGIN_CODE_ONLY_ACTION_PATTERN = /one[-\s]*time|passcode|use\s+(?:a\s+)?code|验证码|一次性/i;
 
@@ -995,8 +996,8 @@ function normalizeCountryLabel(value) {
 }
 
 function extractDialCodeFromText(value) {
-  const match = String(value || '').match(/\(\+\s*(\d{1,4})\s*\)|\+\s*(\d{1,4})\b/);
-  return String(match?.[1] || match?.[2] || '').trim();
+  const match = String(value || '').match(/\(\+\s*(\d{1,4})\s*\)|\+\s*\(\s*(\d{1,4})\s*\)|\+\s*(\d{1,4})\b/);
+  return String(match?.[1] || match?.[2] || match?.[3] || '').trim();
 }
 
 function getRegionDisplayName(regionCode, locale) {
@@ -1325,7 +1326,7 @@ const OAUTH_CONSENT_PAGE_PATTERN = /使用\s*ChatGPT\s*登录到\s*Codex|sign\s+
 const OAUTH_CONSENT_FORM_SELECTOR = 'form[action*="/sign-in-with-chatgpt/" i][action*="/consent" i]';
 const CONTINUE_ACTION_PATTERN = /继续|continue/i;
 const ADD_PHONE_PAGE_PATTERN = /add[\s-]*phone|添加手机号|手机号码|手机号|phone\s+number|telephone/i;
-const ADD_EMAIL_PAGE_PATTERN = /add[\s-]*email|添加(?:电子邮件|邮箱)|电子邮件地址|邮箱地址|email\s+address/i;
+const ADD_EMAIL_PAGE_PATTERN = /add[\s-]*email|添加(?:电子邮件|邮箱)|要求提供(?:电子邮件|邮箱)地址|提供(?:电子邮件|邮箱)地址|provide\s+(?:an?\s+)?email\s+address|email\s+address\s+required/i;
 const STEP5_SUBMIT_ERROR_PATTERN = /无法根据该信息创建帐户|请重试|unable\s+to\s+create\s+(?:your\s+)?account|couldn'?t\s+create\s+(?:your\s+)?account|something\s+went\s+wrong|invalid\s+(?:birthday|birth|date)|生日|出生日期/i;
 const AUTH_TIMEOUT_ERROR_TITLE_PATTERN = /糟糕，出错了|something\s+went\s+wrong|oops/i;
 const AUTH_TIMEOUT_ERROR_DETAIL_PATTERN = /operation\s+timed\s+out|timed\s+out|请求超时|操作超时/i;
@@ -1623,7 +1624,9 @@ function isAddEmailPageReady() {
     return true;
   }
 
-  return ADD_EMAIL_PAGE_PATTERN.test(getPageTextSnapshot());
+  const pageText = getPageTextSnapshot();
+  return ADD_EMAIL_PAGE_PATTERN.test(pageText)
+    && !/继续使用(?:电子邮件地址|邮箱)登录|continue\s+using\s+(?:an?\s+)?email(?:\s+address)?\s+(?:to\s+)?(?:log\s*in|sign\s*in)|continue\s+with\s+email/i.test(pageText);
 }
 
 function isStep8Ready() {
@@ -2029,18 +2032,62 @@ function getLoginTimeoutErrorPageState() {
   });
 }
 
+function isLoginPhoneUsernameKind(rawUrl = location.href) {
+  const url = String(rawUrl || '').trim();
+  if (!url) {
+    return false;
+  }
+
+  try {
+    const parsed = new URL(url);
+    return /\/log-in(?:[/?#]|$)/i.test(parsed.pathname || '')
+      && String(parsed.searchParams.get('usernameKind') || '').toLowerCase() === 'phone_number';
+  } catch {
+    return /\/log-in(?:[/?#]|$)/i.test(url) && /[?&]usernameKind=phone_number(?:[&#]|$)/i.test(url);
+  }
+}
+
+function isLoginPhoneEntryPageText(pageText = getPageTextSnapshot()) {
+  const normalizedText = String(pageText || '').replace(/\s+/g, ' ').trim();
+  if (!normalizedText) {
+    return false;
+  }
+
+  if (isAddPhonePageReady() || isPhoneVerificationPageReady()) {
+    return false;
+  }
+
+  return LOGIN_PHONE_ENTRY_PAGE_PATTERN.test(normalizedText);
+}
+
 function getLoginEmailInput() {
   const input = document.querySelector(
     'input[type="email"], input[name="email"], input[name="username"], input[id*="email"], input[placeholder*="email" i], input[placeholder*="Email"]'
   );
+  if (isLoginPhoneUsernameKind() || isLoginPhoneEntryPageText()) {
+    return null;
+  }
   return input && isVisibleElement(input) ? input : null;
 }
 
 function getLoginPhoneInput() {
-  const input = document.querySelector(
+  const directInput = document.querySelector(
     'input[type="tel"]:not([maxlength="6"]), input[name*="phone" i], input[id*="phone" i], input[autocomplete="tel"], input[placeholder*="手机"], input[aria-label*="手机"]'
   );
-  return input && isVisibleElement(input) ? input : null;
+  if (directInput && isVisibleElement(directInput)) {
+    return directInput;
+  }
+
+  if (isLoginPhoneUsernameKind() || isLoginPhoneEntryPageText()) {
+    const usernameInput = document.querySelector(
+      'input[name="username"]:not([maxlength="6"]), input[id*="username" i]:not([maxlength="6"]), input[autocomplete="username"]:not([maxlength="6"]), input[type="text"]:not([maxlength="6"])'
+    );
+    if (usernameInput && isVisibleElement(usernameInput)) {
+      return usernameInput;
+    }
+  }
+
+  return null;
 }
 
 function getLoginPasswordInput() {
@@ -3260,6 +3307,21 @@ async function waitForStep6EmailSubmitTransition(emailSubmittedAt, timeout = 120
   });
 }
 
+async function waitForStep6PhoneSubmitTransition(phoneSubmittedAt, timeout = 12000) {
+  return waitForStep6PostSubmitTransition({
+    timeout,
+    via: 'phone_submit',
+    oauthConsentVia: 'phone_submit_oauth_consent',
+    loginVerificationRequestedAt: phoneSubmittedAt,
+    timeoutRecoveryMessage: '提交手机号后进入登录超时报错页。',
+    timeoutRecoveryVia: 'phone_submit_timeout_recovered',
+    allowPasswordAction: true,
+    stalledReason: 'phone_submit_stalled',
+    stalledMessage: '提交手机号后长时间未进入密码页、添加邮箱页或邮箱验证码页。',
+    addPhoneMessage: (snapshot) => `提交手机号后页面直接进入手机号页面，未经过登录验证码页。URL: ${snapshot.url}`,
+  });
+}
+
 async function waitForStep6PasswordSubmitTransition(passwordSubmittedAt, timeout = 10000) {
   return waitForStep6PostSubmitTransition({
     timeout,
@@ -3310,6 +3372,22 @@ async function waitForLoginEntryOpenTransition(timeout = 10000) {
   return snapshot;
 }
 
+async function waitForPhoneLoginEntrySwitchTransition(timeout = 12000) {
+  const start = Date.now();
+  let snapshot = normalizeStep6Snapshot(inspectLoginAuthState());
+
+  while (Date.now() - start < timeout) {
+    throwIfStopped();
+    snapshot = normalizeStep6Snapshot(inspectLoginAuthState());
+    if (!['unknown', 'entry_page', 'email_page'].includes(snapshot.state)) {
+      return snapshot;
+    }
+    await sleep(250);
+  }
+
+  return normalizeStep6Snapshot(inspectLoginAuthState());
+}
+
 async function step6LoginFromPhonePage(payload, snapshot) {
   const currentSnapshot = normalizeStep6Snapshot(snapshot || inspectLoginAuthState());
   const phoneInput = currentSnapshot.phoneInput || getLoginPhoneInput();
@@ -3343,7 +3421,7 @@ async function step6LoginFromPhonePage(payload, snapshot) {
   await triggerLoginSubmitAction(currentSnapshot.submitButton, phoneInput);
   log('步骤 7：已提交手机号');
 
-  const transition = await waitForStep6EmailSubmitTransition(phoneSubmittedAt);
+  const transition = await waitForStep6PhoneSubmitTransition(phoneSubmittedAt);
   if (transition.action === 'done') {
     if (transition.result?.skipLoginVerificationStep || transition.result?.addEmailPage) {
       return transition.result;
@@ -3373,11 +3451,53 @@ async function step6LoginFromPhonePage(payload, snapshot) {
   });
 }
 
+async function switchFromEmailPageToPhoneLogin(payload, snapshot) {
+  const currentSnapshot = normalizeStep6Snapshot(snapshot || inspectLoginAuthState());
+  const phoneEntryTrigger = currentSnapshot.phoneEntryTrigger || findLoginPhoneEntryTrigger();
+  if (!phoneEntryTrigger || !isActionEnabled(phoneEntryTrigger)) {
+    return createStep6RecoverableResult('missing_phone_login_entry_trigger', currentSnapshot, {
+      message: '本轮要求使用手机号登录，但当前邮箱登录页没有可用的“继续使用手机登录”入口，准备重新执行步骤 7。',
+    });
+  }
+
+  log('步骤 7：当前在邮箱入口，正在切换到手机号登录...');
+  await humanPause(350, 900);
+  simulateClick(phoneEntryTrigger);
+  const nextSnapshot = normalizeStep6Snapshot(await waitForPhoneLoginEntrySwitchTransition());
+  if (nextSnapshot.state === 'phone_entry_page') {
+    return step6LoginFromPhonePage(payload, nextSnapshot);
+  }
+  if (nextSnapshot.state === 'password_page') {
+    return step6LoginFromPasswordPage(payload, nextSnapshot);
+  }
+  if (nextSnapshot.state === 'verification_page') {
+    return finalizeStep6VerificationReady({
+      logLabel: '步骤 7 收尾',
+      loginVerificationRequestedAt: null,
+      via: 'phone_entry_switch_verification_page',
+    });
+  }
+  if (nextSnapshot.state === 'oauth_consent_page') {
+    return createStep6OAuthConsentSuccessResult(nextSnapshot, {
+      via: 'phone_entry_switch_oauth_consent_page',
+    });
+  }
+  if (nextSnapshot.state === 'add_email_page') {
+    return createStep6AddEmailSuccessResult(nextSnapshot, {
+      via: 'phone_entry_switch_add_email_page',
+    });
+  }
+
+  return createStep6RecoverableResult('phone_login_entry_switch_stalled', nextSnapshot, {
+    message: `点击“继续使用手机登录”后仍未进入手机号或密码页，当前停留在${getLoginAuthStateLabel(nextSnapshot)}，准备重新执行步骤 7。`,
+  });
+}
+
 async function step6OpenLoginEntry(payload, snapshot) {
   const currentSnapshot = normalizeStep6Snapshot(snapshot || inspectLoginAuthState());
   const preferPhoneLogin = String(payload?.loginIdentifierType || '').trim() === 'phone' || (!payload?.email && payload?.phoneNumber);
   const trigger = preferPhoneLogin
-    ? (currentSnapshot.phoneEntryTrigger || findLoginPhoneEntryTrigger() || currentSnapshot.loginEntryTrigger || findLoginEntryTrigger())
+    ? (currentSnapshot.phoneEntryTrigger || findLoginPhoneEntryTrigger())
     : (currentSnapshot.loginEntryTrigger || findLoginEntryTrigger());
   if (!trigger || !isActionEnabled(trigger)) {
     return createStep6RecoverableResult('missing_login_entry_trigger', currentSnapshot, {
@@ -3393,6 +3513,9 @@ async function step6OpenLoginEntry(payload, snapshot) {
   const nextSnapshot = await waitForLoginEntryOpenTransition();
 
   if (nextSnapshot.state === 'email_page') {
+    if (preferPhoneLogin) {
+      return switchFromEmailPageToPhoneLogin(payload, nextSnapshot);
+    }
     return step6LoginFromEmailPage(payload, nextSnapshot);
   }
   if (nextSnapshot.state === 'password_page') {
@@ -3642,16 +3765,7 @@ async function step6_login(payload) {
 
   if (snapshot.state === 'email_page') {
     if (loginIdentifierType === 'phone' && phoneNumber) {
-      const phoneEntryTrigger = snapshot.phoneEntryTrigger || findLoginPhoneEntryTrigger();
-      if (phoneEntryTrigger && isActionEnabled(phoneEntryTrigger)) {
-        log('步骤 7：当前在邮箱入口，正在切换到手机号登录...');
-        await humanPause(350, 900);
-        simulateClick(phoneEntryTrigger);
-        const nextSnapshot = await waitForLoginEntryOpenTransition();
-        if (nextSnapshot.state === 'phone_entry_page') {
-          return step6LoginFromPhonePage(payload, nextSnapshot);
-        }
-      }
+      return switchFromEmailPageToPhoneLogin(payload, snapshot);
     }
     if (!email) {
       return createStep6RecoverableResult('missing_email_for_email_page', snapshot, {

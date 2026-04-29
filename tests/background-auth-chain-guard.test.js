@@ -286,7 +286,7 @@ return {
 
   const timeoutMs = await api.getOAuthFlowStepTimeoutMs(15000, {
     step: 8,
-    actionLabel: '登录验证码流程',
+    actionLabel: '添加邮箱并验证流程',
     state: {
       oauthUrl: 'https://oauth.example/current',
       oauthFlowDeadlineAt: Date.now() + 1200,

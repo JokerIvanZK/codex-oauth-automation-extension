@@ -520,7 +520,7 @@ const DEFAULT_STATE = {
   icloudAliasCacheAt: 0,
   lastEmailTimestamp: null, // 最近一次获取到邮箱数据的运行时时间戳。
   lastSignupCode: null, // 注册验证码，运行时由程序自动读取并写入。
-  lastLoginCode: null, // 登录验证码，运行时由程序自动读取并写入。
+  lastLoginCode: null, // 邮箱验证码，运行时由程序自动读取并写入。
   localhostUrl: null, // 运行时捕获到的 localhost 回调地址，不要手动预填。
   sub2apiSessionId: null, // SUB2API OpenAI Auth 会话 ID。
   sub2apiOAuthState: null, // SUB2API OpenAI Auth state。
@@ -9207,7 +9207,7 @@ async function runPreStep6CookieCleanup() {
 }
 
 // ============================================================
-// Step 7: Login and ensure the auth page reaches the login verification page
+// Step 7: Phone login and ensure the auth page reaches add-email or verification
 // ============================================================
 
 async function refreshOAuthUrlBeforeStep6(state, options = {}) {
@@ -9582,12 +9582,12 @@ async function ensureStep8VerificationPageReady(options = {}) {
 
   const stateLabel = getLoginAuthStateLabel(pageState.state);
   const urlPart = pageState.url ? ` URL: ${pageState.url}` : '';
-  throw new Error(`当前未进入登录验证码页面，请先重新完成步骤 ${authLoginStep}。当前状态：${stateLabel}.${urlPart}`.trim());
+  throw new Error(`当前未进入添加邮箱或邮箱验证码页面，请先重新完成步骤 ${authLoginStep}。当前状态：${stateLabel}.${urlPart}`.trim());
 }
 
 async function rerunStep7ForStep8Recovery(options = {}) {
   const {
-    logMessage = '步骤 8：正在回到步骤 7，重新发起登录验证码流程...',
+    logMessage = '步骤 8：正在回到步骤 7，重新发起添加邮箱并验证流程...',
     postStepDelayMs = 3000,
   } = options;
 
@@ -9641,7 +9641,7 @@ async function executeStep7(state) {
 }
 
 // ============================================================
-// Step 8: Poll login verification mail and submit the login code
+// Step 8: Add email, poll mailbox verification, and submit the code
 // ============================================================
 
 async function executeStep8(state) {

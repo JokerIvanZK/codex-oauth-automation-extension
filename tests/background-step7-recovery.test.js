@@ -78,7 +78,7 @@ test('step 8 submits login verification directly without replaying step 7', asyn
   assert.equal(calls.rerunStep7, 0);
   assert.equal(calls.resolveOptions.filterAfterTimestamp, 123456);
   assert.equal(typeof calls.resolveOptions.getRemainingTimeMs, 'function');
-  assert.equal(await calls.resolveOptions.getRemainingTimeMs({ actionLabel: '登录验证码流程' }), 5000);
+  assert.equal(await calls.resolveOptions.getRemainingTimeMs({ actionLabel: '添加邮箱并验证流程' }), 5000);
   assert.equal(calls.resolveOptions.resendIntervalMs, 25000);
   assert.equal(calls.resolveOptions.targetEmail, 'display.user@example.com');
   assert.deepStrictEqual(calls.setStates, [
@@ -134,7 +134,7 @@ test('Plus login-code step reuses step 8 verification logic but completes visibl
     resolveVerificationStep: async (step, _state, _mail, options) => {
       resolvedStep = step;
       resolvedOptions = options;
-      await options.getRemainingTimeMs({ actionLabel: '登录验证码流程' });
+      await options.getRemainingTimeMs({ actionLabel: '添加邮箱并验证流程' });
     },
     reuseOrCreateTab: async () => {},
     setState: async () => {},

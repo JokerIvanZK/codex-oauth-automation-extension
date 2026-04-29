@@ -62,7 +62,7 @@
 
       return async (details = {}) => getOAuthFlowRemainingMs({
         step: visibleStep,
-        actionLabel: details.actionLabel || '登录验证码流程',
+        actionLabel: details.actionLabel || '添加邮箱并验证流程',
         oauthUrl: expectedOauthUrl,
       });
     }
@@ -157,7 +157,7 @@
       });
       const fromRecovery = Boolean(options.fromRecovery);
       await addLog(
-        `步骤 ${visibleStep}：当前认证页已进入 OAuth 授权页${fromRecovery ? '（轮询失败后复核）' : ''}，跳过登录验证码拉取并继续后续流程。`,
+        `步骤 ${visibleStep}：当前认证页已进入 OAuth 授权页${fromRecovery ? '（轮询失败后复核）' : ''}，跳过邮箱验证码拉取并继续后续流程。`,
         'warn'
       );
       if (typeof completeStepFromBackground === 'function') {
@@ -181,7 +181,7 @@
           visibleStep,
           authLoginStep,
           timeoutMs: await getStep8ReadyTimeoutMs(
-            '登录验证码轮询异常后复核认证页状态',
+            '邮箱验证码轮询异常后复核认证页状态',
             currentState?.oauthUrl || '',
             visibleStep
           ),
@@ -418,7 +418,7 @@
           await rerunStep7ForStep8Recovery({
             logMessage: isStep8RestartStep7Error(currentError)
               ? `步骤 ${visibleStep}：认证页进入重试/超时报错状态，正在回到步骤 ${authLoginStep} 重新发起登录流程...`
-              : `步骤 ${visibleStep}：正在回到步骤 ${authLoginStep}，重新发起登录验证码流程...`,
+              : `步骤 ${visibleStep}：正在回到步骤 ${authLoginStep}，重新发起添加邮箱并验证流程...`,
           });
           currentState = await getState();
         }
@@ -427,11 +427,11 @@
       const visibleStep = getVisibleStep(currentState, 8);
       if (lastMailPollingError) {
         throw new Error(
-          `步骤 ${visibleStep}：登录验证码流程在 ${STEP7_MAIL_POLLING_RECOVERY_MAX_ATTEMPTS} 轮邮箱轮询恢复后仍未成功。最后一次原因：${lastMailPollingError.message}`
+          `步骤 ${visibleStep}：添加邮箱并验证流程在 ${STEP7_MAIL_POLLING_RECOVERY_MAX_ATTEMPTS} 轮邮箱轮询恢复后仍未成功。最后一次原因：${lastMailPollingError.message}`
         );
       }
 
-      throw new Error(`步骤 ${visibleStep}：登录验证码流程未成功完成。`);
+      throw new Error(`步骤 ${visibleStep}：添加邮箱并验证流程未成功完成。`);
     }
 
     return { executeStep8 };

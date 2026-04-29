@@ -496,7 +496,7 @@
     }
 
     async function completePhoneActivation(state = {}, activation) {
-      await setPhoneActivationStatus(state, activation, 6, 'HeroSMS setStatus(6)');
+      await setPhoneActivationStatus(state, activation, 3, 'HeroSMS setStatus(3)');
     }
 
     async function cancelPhoneActivation(state = {}, activation) {

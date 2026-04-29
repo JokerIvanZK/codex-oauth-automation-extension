@@ -219,7 +219,7 @@
             const currentStatus = latestState.stepStatuses?.[loginCodeStep];
             if (!isStepProtectedFromAutoSkip(currentStatus)) {
               await setStepStatus(loginCodeStep, 'skipped');
-              await addLog(`步骤 ${step}：认证页已直接进入 OAuth 授权页，已自动跳过步骤 ${loginCodeStep} 的登录验证码。`, 'warn');
+              await addLog(`步骤 ${step}：认证页已直接进入 OAuth 授权页，已自动跳过步骤 ${loginCodeStep} 的添加邮箱并验证。`, 'warn');
             }
           }
         } else if (payload.loginVerificationRequestedAt) {

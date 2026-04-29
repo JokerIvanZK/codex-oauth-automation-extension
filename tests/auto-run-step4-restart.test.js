@@ -207,7 +207,7 @@ return {
   assert.deepStrictEqual(events.steps, [1, 2, 3, 4, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
   assert.equal(currentState.email, 'keep@example.com');
   assert.equal(currentState.password, 'Secret123!');
-  assert.equal(events.logs.some(({ message }) => /沿用当前邮箱回到步骤 1 重新开始/.test(message)), true);
+  assert.equal(events.logs.some(({ message }) => /重新获取手机号并开始本轮重试/.test(message)), true);
 });
 
 test('auto-run does not restart step 4 current attempt when user_already_exists is detected', async () => {
